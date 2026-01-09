@@ -138,7 +138,7 @@ class SettingsActivity : AppCompatActivity() {
             )
 
             "播放设置" -> listOf(
-                SettingEntry("默认画质", "${prefs.playerMaxHeight}P", "影响选流（初版按高度上限）"),
+                SettingEntry("默认画质", qnText(prefs.playerPreferredQn), "按 B 站 qn 清晰度选择（DASH 走轨道 id）"),
                 SettingEntry("默认音轨", audioText(prefs.playerPreferredAudioId), "30280/30232/30216"),
                 SettingEntry("默认播放速度", String.format(Locale.US, "%.2fx", prefs.playerSpeed), null),
                 SettingEntry("字幕语言", subtitleLangText(prefs.subtitlePreferredLang), "自动/优先匹配"),
@@ -364,13 +364,15 @@ class SettingsActivity : AppCompatActivity() {
             }
 
             "默认画质" -> {
-                val options = listOf(360, 480, 720, 1080).map { "${it}P" }
+                val options =
+                    listOf(16, 32, 64, 74, 80, 112, 116, 120, 127).map { it to qnText(it) }
                 showChoiceDialog(
-                    title = "默认画质(高度上限)",
-                    items = options,
-                    current = "${prefs.playerMaxHeight}P",
+                    title = "默认画质(qn)",
+                    items = options.map { it.second },
+                    current = qnText(prefs.playerPreferredQn),
                 ) { selected ->
-                    prefs.playerMaxHeight = selected.removeSuffix("P").toIntOrNull() ?: prefs.playerMaxHeight
+                    val qn = options.firstOrNull { it.second == selected }?.first
+                    if (qn != null) prefs.playerPreferredQn = qn
                     showSection(currentSectionIndex)
                 }
             }
@@ -529,5 +531,23 @@ class SettingsActivity : AppCompatActivity() {
         blbl.cat3399.core.prefs.AppPrefs.UI_MODE_TV -> "开"
         blbl.cat3399.core.prefs.AppPrefs.UI_MODE_NORMAL -> "关"
         else -> "自动"
+    }
+
+    private fun qnText(qn: Int): String = when (qn) {
+        16 -> "360P 流畅(16)"
+        32 -> "480P 清晰(32)"
+        64 -> "720P 高清(64)"
+        74 -> "720P60 高帧率(74)"
+        80 -> "1080P 高清(80)"
+        112 -> "1080P+ 高码率(112)"
+        116 -> "1080P60 高帧率(116)"
+        120 -> "4K 超清(120)"
+        127 -> "8K 超高清(127)"
+        125 -> "HDR 真彩色(125)"
+        126 -> "杜比视界(126)"
+        129 -> "HDR Vivid(129)"
+        6 -> "240P 极速(6)"
+        100 -> "智能修复(100)"
+        else -> "qn $qn"
     }
 }

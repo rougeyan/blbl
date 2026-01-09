@@ -69,9 +69,9 @@ class AppPrefs(context: Context) {
         get() = prefs.getFloat(KEY_DANMAKU_AREA, 1.0f)
         set(value) = prefs.edit().putFloat(KEY_DANMAKU_AREA, value).apply()
 
-    var playerMaxHeight: Int
-        get() = prefs.getInt(KEY_PLAYER_MAX_HEIGHT, 1080)
-        set(value) = prefs.edit().putInt(KEY_PLAYER_MAX_HEIGHT, value).apply()
+    var playerPreferredQn: Int
+        get() = prefs.getInt(KEY_PLAYER_PREFERRED_QN, 80)
+        set(value) = prefs.edit().putInt(KEY_PLAYER_PREFERRED_QN, value).apply()
 
     var playerPreferredCodec: String
         get() = prefs.getString(KEY_PLAYER_CODEC, "AVC") ?: "AVC"
@@ -130,7 +130,7 @@ class AppPrefs(context: Context) {
         private const val KEY_DANMAKU_TEXT_SIZE_SP = "danmaku_text_size_sp"
         private const val KEY_DANMAKU_SPEED = "danmaku_speed"
         private const val KEY_DANMAKU_AREA = "danmaku_area"
-        private const val KEY_PLAYER_MAX_HEIGHT = "player_max_height"
+        private const val KEY_PLAYER_PREFERRED_QN = "player_preferred_qn"
         private const val KEY_PLAYER_CODEC = "player_codec"
         private const val KEY_PLAYER_AUDIO_ID = "player_audio_id"
         private const val KEY_SUBTITLE_LANG = "subtitle_lang"

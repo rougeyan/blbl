@@ -47,6 +47,11 @@ class CookieStore(
         return store.values.flatten().any { it.name == "SESSDATA" && it.expiresAt >= now }
     }
 
+    fun getCookieValue(name: String): String? {
+        val now = System.currentTimeMillis()
+        return store.values.flatten().firstOrNull { it.name == name && it.expiresAt >= now }?.value
+    }
+
     fun clearAll() {
         store.clear()
         prefs.edit().clear().apply()

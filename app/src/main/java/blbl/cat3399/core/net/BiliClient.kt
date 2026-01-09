@@ -3,6 +3,7 @@ package blbl.cat3399.core.net
 import android.content.Context
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.prefs.AppPrefs
+import okhttp3.CookieJar
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -21,6 +22,8 @@ object BiliClient {
         private set
     lateinit var apiOkHttp: OkHttpClient
         private set
+
+    private lateinit var apiOkHttpNoCookies: OkHttpClient
 
     lateinit var cdnOkHttp: OkHttpClient
         private set
@@ -55,6 +58,8 @@ object BiliClient {
             }
             .build()
 
+        apiOkHttpNoCookies = apiOkHttp.newBuilder().cookieJar(CookieJar.NO_COOKIES).build()
+
         cdnOkHttp = baseClient.newBuilder()
             .addInterceptor { chain ->
                 val ua = prefs.userAgent
@@ -75,7 +80,7 @@ object BiliClient {
         AppLog.i(TAG, "init ua=${prefs.userAgent.take(48)} cookiesSess=${cookies.hasSessData()}")
     }
 
-    private fun clientFor(url: String): OkHttpClient {
+    private fun clientFor(url: String, noCookies: Boolean = false): OkHttpClient {
         val host = runCatching { url.toHttpUrl().host }.getOrNull().orEmpty()
         return if (
             host.endsWith("hdslb.com") ||
@@ -83,12 +88,13 @@ object BiliClient {
             host.contains("bilivideo.cn") ||
             host.contains("mcdn.bilivideo")
         ) cdnOkHttp else apiOkHttp
+            .let { if (noCookies) apiOkHttpNoCookies else apiOkHttp }
     }
 
-    suspend fun getJson(url: String, headers: Map<String, String> = emptyMap()): JSONObject {
+    suspend fun getJson(url: String, headers: Map<String, String> = emptyMap(), noCookies: Boolean = false): JSONObject {
         val reqBuilder = Request.Builder().url(url)
         for ((k, v) in headers) reqBuilder.header(k, v)
-        val res = clientFor(url).newCall(reqBuilder.build()).await()
+        val res = clientFor(url, noCookies = noCookies).newCall(reqBuilder.build()).await()
         res.use { r ->
             val body = r.body?.string() ?: ""
             if (!r.isSuccessful) throw IOException("HTTP ${r.code} ${r.message} body=${body.take(200)}")
@@ -96,10 +102,10 @@ object BiliClient {
         }
     }
 
-    suspend fun getBytes(url: String, headers: Map<String, String> = emptyMap()): ByteArray {
+    suspend fun getBytes(url: String, headers: Map<String, String> = emptyMap(), noCookies: Boolean = false): ByteArray {
         val reqBuilder = Request.Builder().url(url)
         for ((k, v) in headers) reqBuilder.header(k, v)
-        val res = clientFor(url).newCall(reqBuilder.build()).await()
+        val res = clientFor(url, noCookies = noCookies).newCall(reqBuilder.build()).await()
         res.use { r ->
             if (!r.isSuccessful) throw IOException("HTTP ${r.code} ${r.message}")
             return r.body?.bytes() ?: ByteArray(0)

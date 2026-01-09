@@ -9,6 +9,8 @@ import blbl.cat3399.proto.dm.DmSegMobileReply
 import blbl.cat3399.proto.dmview.DmWebViewReply
 import org.json.JSONArray
 import org.json.JSONObject
+import java.security.MessageDigest
+import java.util.Locale
 
 object BiliApi {
     private const val TAG = "BiliApi"
@@ -106,20 +108,45 @@ object BiliApi {
         return BiliClient.getJson(url)
     }
 
-    suspend fun playUrlDash(bvid: String, cid: Long, fnval: Int = 16): JSONObject {
+    suspend fun playUrlDash(bvid: String, cid: Long, qn: Int = 80, fnval: Int = 16): JSONObject {
         val keys = BiliClient.ensureWbiKeys()
-        val url = BiliClient.signedWbiUrl(
-            path = "/x/player/wbi/playurl",
-            params = mapOf(
+        val hasSessData = BiliClient.cookies.hasSessData()
+        val params =
+            mutableMapOf(
                 "bvid" to bvid,
                 "cid" to cid.toString(),
+                "qn" to qn.toString(),
                 "fnver" to "0",
                 "fnval" to fnval.toString(),
                 "fourk" to "1",
-            ),
-            keys = keys,
-        )
-        return BiliClient.getJson(url)
+                "platform" to "pc",
+                "otype" to "json",
+                "from_client" to "BROWSER",
+                "web_location" to "1315873",
+                "isGaiaAvoided" to "false",
+            )
+        if (!hasSessData) {
+            params["gaia_source"] = "view-card"
+            params["try_look"] = "1"
+        }
+        genPlayUrlSession()?.let { params["session"] = it }
+        return try {
+            requestPlayUrl(path = "/x/player/wbi/playurl", params = params, keys = keys)
+        } catch (e: BiliApiException) {
+            if (hasSessData && isRiskControl(e)) {
+                val fallback = params.toMutableMap()
+                fallback["try_look"] = "1"
+                fallback.remove("gaia_source")
+                fallback.remove("session")
+                val json = requestPlayUrl(path = "/x/player/wbi/playurl", params = fallback, keys = keys, noCookies = true)
+                json.put("__blbl_risk_control_bypassed", true)
+                json.put("__blbl_risk_control_code", e.apiCode)
+                json.put("__blbl_risk_control_message", e.apiMessage)
+                json
+            } else {
+                throw e
+            }
+        }
     }
 
     suspend fun playerWbiV2(bvid: String, cid: Long): JSONObject {
@@ -361,5 +388,39 @@ object BiliApi {
         val next = data.optString("offset", "").takeIf { it.isNotBlank() }
         AppLog.d(TAG, "dynamicSpaceVideo hostMid=$hostMid size=${cards.size} nextOffset=${next?.take(8)}")
         return DynamicPage(cards, next)
+    }
+
+    private fun genPlayUrlSession(nowMs: Long = System.currentTimeMillis()): String? {
+        val buvid3 = BiliClient.cookies.getCookieValue("buvid3")?.takeIf { it.isNotBlank() } ?: return null
+        return md5Hex(buvid3 + nowMs.toString())
+    }
+
+    private suspend fun requestPlayUrl(
+        path: String,
+        params: Map<String, String>,
+        keys: blbl.cat3399.core.net.WbiSigner.Keys,
+        noCookies: Boolean = false,
+    ): JSONObject {
+        val url = BiliClient.signedWbiUrl(path = path, params = params, keys = keys)
+        val json = BiliClient.getJson(url, noCookies = noCookies)
+        val code = json.optInt("code", 0)
+        if (code != 0) {
+            val msg = json.optString("message", json.optString("msg", ""))
+            throw BiliApiException(apiCode = code, apiMessage = msg)
+        }
+        return json
+    }
+
+    private fun isRiskControl(e: BiliApiException): Boolean {
+        if (e.apiCode == -412) return true
+        val m = e.apiMessage
+        return m.contains("风控") || m.contains("拦截") || m.contains("风险")
+    }
+
+    private fun md5Hex(s: String): String {
+        val digest = MessageDigest.getInstance("MD5").digest(s.toByteArray())
+        val sb = StringBuilder(digest.size * 2)
+        for (b in digest) sb.append(String.format(Locale.US, "%02x", b))
+        return sb.toString()
     }
 }

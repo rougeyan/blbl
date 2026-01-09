@@ -29,6 +29,7 @@ import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.source.SingleSampleMediaSource
 import androidx.media3.ui.CaptionStyleCompat
 import blbl.cat3399.core.api.BiliApi
+import blbl.cat3399.core.api.BiliApiException
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.model.DanmakuShield
 import blbl.cat3399.core.net.BiliClient
@@ -67,6 +68,7 @@ class PlayerActivity : AppCompatActivity() {
     private var smartSeekTotalMs: Long = 0L
     private var tapSeekActiveDirection: Int = 0
     private var tapSeekActiveUntilMs: Long = 0L
+    private var riskControlBypassHintShown: Boolean = false
 
     private var currentBvid: String = ""
     private var currentCid: Long = -1L
@@ -74,6 +76,7 @@ class PlayerActivity : AppCompatActivity() {
     private var subtitleAvailable: Boolean = false
     private var subtitleConfig: MediaItem.SubtitleConfiguration? = null
     private var subtitleItems: List<SubtitleItem> = emptyList()
+    private var lastAvailableQns: List<Int> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -100,6 +103,8 @@ class PlayerActivity : AppCompatActivity() {
             playbackSpeed = prefs.playerSpeed,
             preferCodec = prefs.playerPreferredCodec,
             preferAudioId = prefs.playerPreferredAudioId,
+            preferredQn = prefs.playerPreferredQn,
+            targetQn = 0,
             subtitleEnabled = prefs.subtitleEnabledDefault,
             subtitleLangOverride = null,
             danmaku = DanmakuSessionSettings(
@@ -140,6 +145,7 @@ class PlayerActivity : AppCompatActivity() {
 
         val settingsAdapter = PlayerSettingsAdapter { item ->
             when (item.title) {
+                "分辨率" -> showResolutionDialog()
                 "视频编码" -> showCodecDialog()
                 "播放速度" -> showSpeedDialog()
                 "字幕语言" -> showSubtitleLangDialog()
@@ -174,11 +180,17 @@ class PlayerActivity : AppCompatActivity() {
                 currentCid = cid
                 AppLog.i("Player", "start bvid=$bvid cid=$cid")
 
-                val playJob = async { BiliApi.playUrlDash(bvid, cid, fnval = 16) }
+                val playJob =
+                    async {
+                        val (qn, fnval) = playUrlParamsForSession()
+                        BiliApi.playUrlDash(bvid, cid, qn = qn, fnval = fnval)
+                    }
                 val dmJob = async(Dispatchers.IO) { loadDanmaku(cid, aid) }
                 val subJob = async(Dispatchers.IO) { prepareSubtitleConfig(viewData, bvid, cid) }
 
                 val playJson = playJob.await()
+                showRiskControlBypassHintIfNeeded(playJson)
+                lastAvailableQns = parseDashVideoQnList(playJson)
                 val playable = pickPlayable(playJson)
                 subtitleConfig = subJob.await()
                 subtitleAvailable = subtitleConfig != null
@@ -186,8 +198,9 @@ class PlayerActivity : AppCompatActivity() {
                 applySubtitleEnabled(exo)
                 when (playable) {
                     is Playable.Dash -> {
-                        AppLog.i("Player", "picked DASH video=${playable.videoUrl.take(40)} audio=${playable.audioUrl.take(40)}")
+                        AppLog.i("Player", "picked DASH qn=${playable.qn} codecid=${playable.codecid} video=${playable.videoUrl.take(40)}")
                         exo.setMediaSource(buildMerged(okHttpFactory, playable.videoUrl, playable.audioUrl, subtitleConfig))
+                        applyResolutionFallbackIfNeeded(requestedQn = session.targetQn, actualQn = playable.qn)
                     }
                     is Playable.Progressive -> {
                         AppLog.i("Player", "picked Progressive url=${playable.url.take(60)}")
@@ -202,7 +215,9 @@ class PlayerActivity : AppCompatActivity() {
                 binding.danmakuView.setDanmakus(danmakus)
             } catch (t: Throwable) {
                 AppLog.e("Player", "start failed", t)
-                Toast.makeText(this@PlayerActivity, "加载播放信息失败：${t.message}", Toast.LENGTH_LONG).show()
+                if (!handlePlayUrlErrorIfNeeded(t)) {
+                    Toast.makeText(this@PlayerActivity, "加载播放信息失败：${t.message}", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
@@ -762,13 +777,14 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private sealed interface Playable {
-        data class Dash(val videoUrl: String, val audioUrl: String) : Playable
+        data class Dash(val videoUrl: String, val audioUrl: String, val qn: Int, val codecid: Int) : Playable
         data class Progressive(val url: String) : Playable
     }
 
     private fun refreshSettings(adapter: PlayerSettingsAdapter) {
         adapter.submit(
             listOf(
+                PlayerSettingsAdapter.SettingItem("分辨率", resolutionSubtitle()),
                 PlayerSettingsAdapter.SettingItem("视频编码", session.preferCodec),
                 PlayerSettingsAdapter.SettingItem("播放速度", String.format(Locale.US, "%.2fx", session.playbackSpeed)),
                 PlayerSettingsAdapter.SettingItem("字幕语言", subtitleLangSubtitle()),
@@ -791,48 +807,95 @@ class PlayerActivity : AppCompatActivity() {
             fun baseUrl(obj: JSONObject): String =
                 obj.optString("baseUrl", obj.optString("base_url", obj.optString("url", "")))
 
-            val prefs = BiliClient.prefs
-            val maxHeight = prefs.playerMaxHeight
             val preferCodecid = when (session.preferCodec) {
                 "HEVC" -> 12
                 "AV1" -> 13
                 else -> 7
             }
 
+            fun qnOf(v: JSONObject): Int {
+                val id = v.optInt("id", 0)
+                if (id > 0) return id
+                return v.optInt("quality", 0).takeIf { it > 0 } ?: 0
+            }
+
+            val videoItems = buildList {
+                for (i in 0 until videos.length()) {
+                    val v = videos.optJSONObject(i) ?: continue
+                    if (baseUrl(v).isBlank()) continue
+                    val qn = qnOf(v)
+                    if (qn <= 0) continue
+                    add(v)
+                }
+            }
+
+            val availableQns = videoItems.map { qnOf(it) }.filter { it > 0 }.distinct()
+
+            val desiredQn = session.targetQn.takeIf { it > 0 } ?: session.preferredQn
+            val pickedQn =
+                when {
+                    availableQns.contains(desiredQn) -> desiredQn
+                    availableQns.isNotEmpty() -> availableQns.maxBy { qnRank(it) }
+                    else -> 0
+                }
+
+            val candidatesByQn = if (pickedQn > 0) videoItems.filter { qnOf(it) == pickedQn } else videoItems
+            val candidates =
+                when {
+                    candidatesByQn.isNotEmpty() -> candidatesByQn
+                    videoItems.isNotEmpty() -> {
+                        if (pickedQn > 0) {
+                            AppLog.w("Player", "wanted qn=$pickedQn but no DASH track matched; fallback to best available")
+                        }
+                        videoItems
+                    }
+                    else -> emptyList()
+                }
+
             var bestVideo: JSONObject? = null
             var bestScore = -1L
-            for (i in 0 until videos.length()) {
-                val v = videos.optJSONObject(i) ?: continue
+            for (v in candidates) {
                 val codecid = v.optInt("codecid", 0)
-                val height = v.optInt("height", 0)
+                val qn = qnOf(v)
                 val bandwidth = v.optLong("bandwidth", 0L)
                 val okCodec = (codecid == preferCodecid)
-                val okRes = height in 1..maxHeight
                 val score =
-                    bandwidth +
-                        (if (okCodec) 1_000_000_000L else 0L) +
-                        (if (okRes) 200_000_000L else -200_000_000L)
-                if (score > bestScore && baseUrl(v).isNotBlank()) {
+                    (qnRank(qn).toLong() * 1_000_000_000_000L) +
+                        bandwidth +
+                        (if (okCodec) 10_000_000_000L else 0L)
+                if (score > bestScore) {
                     bestScore = score
                     bestVideo = v
                 }
             }
-            val videoUrl = baseUrl(bestVideo ?: error("no video"))
+            val picked = bestVideo
+            if (picked == null) {
+                AppLog.w("Player", "no DASH video track picked; fallback to durl if possible")
+            } else {
+                val videoUrl = baseUrl(picked)
+                val pickedQnFinal = qnOf(picked)
+                val pickedCodecid = picked.optInt("codecid", 0)
 
-            var bestAudio: JSONObject? = null
-            var bestAudioScore = -1L
-            for (i in 0 until audios.length()) {
-                val a = audios.optJSONObject(i) ?: continue
-                val id = a.optInt("id", 0)
-                val bw = a.optLong("bandwidth", 0L)
-                val score = bw + if (id == session.preferAudioId) 10_000_000L else 0L
-                if (score > bestAudioScore && baseUrl(a).isNotBlank()) {
-                    bestAudioScore = score
-                    bestAudio = a
+                var bestAudio: JSONObject? = null
+                var bestAudioScore = -1L
+                for (i in 0 until audios.length()) {
+                    val a = audios.optJSONObject(i) ?: continue
+                    val id = a.optInt("id", 0)
+                    val bw = a.optLong("bandwidth", 0L)
+                    val score = bw + if (id == session.preferAudioId) 10_000_000L else 0L
+                    if (score > bestAudioScore && baseUrl(a).isNotBlank()) {
+                        bestAudioScore = score
+                        bestAudio = a
+                    }
+                }
+                val audioPicked = bestAudio
+                if (audioPicked == null) {
+                    AppLog.w("Player", "no DASH audio track picked; fallback to durl if possible")
+                } else {
+                    val audioUrl = baseUrl(audioPicked)
+                    return Playable.Dash(videoUrl, audioUrl, qn = pickedQnFinal, codecid = pickedCodecid)
                 }
             }
-            val audioUrl = baseUrl(bestAudio ?: error("no audio"))
-            return Playable.Dash(videoUrl, audioUrl)
         }
 
         // Fallback: try durl (progressive) if dash missing.
@@ -841,7 +904,8 @@ class PlayerActivity : AppCompatActivity() {
 
         val cid = intent.getLongExtra(EXTRA_CID, -1L).takeIf { it > 0 } ?: error("cid missing for fallback")
         val bvid = intent.getStringExtra(EXTRA_BVID).orEmpty()
-        val fallbackJson = BiliApi.playUrlDash(bvid, cid, fnval = 0)
+        // Extra fallback: request MP4 directly (avoid deprecated fnval=0).
+        val fallbackJson = BiliApi.playUrlDash(bvid, cid, qn = 127, fnval = 1)
         val fallbackData = fallbackJson.optJSONObject("data") ?: JSONObject()
         val fallbackUrl = fallbackData.optJSONArray("durl")?.optJSONObject(0)?.optString("url").orEmpty()
         if (fallbackUrl.isNotBlank()) return Playable.Progressive(fallbackUrl)
@@ -921,11 +985,17 @@ class PlayerActivity : AppCompatActivity() {
         val pos = exo.currentPosition
         lifecycleScope.launch {
             try {
-                val playJson = BiliApi.playUrlDash(bvid, cid, fnval = 16)
+                val (qn, fnval) = playUrlParamsForSession()
+                val playJson = BiliApi.playUrlDash(bvid, cid, qn = qn, fnval = fnval)
+                showRiskControlBypassHintIfNeeded(playJson)
+                lastAvailableQns = parseDashVideoQnList(playJson)
                 val playable = pickPlayable(playJson)
                 val okHttpFactory = OkHttpDataSource.Factory(BiliClient.cdnOkHttp)
                 when (playable) {
-                    is Playable.Dash -> exo.setMediaSource(buildMerged(okHttpFactory, playable.videoUrl, playable.audioUrl, subtitleConfig))
+                    is Playable.Dash -> {
+                        exo.setMediaSource(buildMerged(okHttpFactory, playable.videoUrl, playable.audioUrl, subtitleConfig))
+                        applyResolutionFallbackIfNeeded(requestedQn = session.targetQn, actualQn = playable.qn)
+                    }
                     is Playable.Progressive -> exo.setMediaSource(buildProgressive(okHttpFactory, playable.url, subtitleConfig))
                 }
                 exo.prepare()
@@ -934,9 +1004,51 @@ class PlayerActivity : AppCompatActivity() {
                 exo.playWhenReady = true
             } catch (t: Throwable) {
                 AppLog.e("Player", "reloadStream failed", t)
-                Toast.makeText(this@PlayerActivity, "切换失败：${t.message}", Toast.LENGTH_SHORT).show()
+                if (!handlePlayUrlErrorIfNeeded(t)) {
+                    Toast.makeText(this@PlayerActivity, "切换失败：${t.message}", Toast.LENGTH_SHORT).show()
+                }
             }
         }
+    }
+
+    private fun handlePlayUrlErrorIfNeeded(t: Throwable): Boolean {
+        val e = t as? BiliApiException ?: return false
+        if (!isRiskControl(e)) return false
+
+        val msg =
+            buildString {
+                append("B 站返回：").append(e.apiCode).append(" / ").append(e.apiMessage)
+                append("\n\n")
+                append("你的账号或网络环境可能触发风控，建议重新登录或稍后重试。")
+                append("\n")
+                append("如持续出现，请向作者反馈日志。")
+            }
+        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+        return true
+    }
+
+    private fun showRiskControlBypassHintIfNeeded(playJson: JSONObject) {
+        if (riskControlBypassHintShown) return
+        if (!playJson.optBoolean("__blbl_risk_control_bypassed", false)) return
+        riskControlBypassHintShown = true
+
+        val code = playJson.optInt("__blbl_risk_control_code", 0)
+        val message = playJson.optString("__blbl_risk_control_message", "")
+        val msg =
+            buildString {
+                append("B 站返回：").append(code).append(" / ").append(message)
+                append("\n\n")
+                append("你的账号或网络环境可能触发风控，建议重新登录或稍后重试。")
+                append("\n")
+                append("如持续出现，请向作者反馈日志。")
+            }
+        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+    }
+
+    private fun isRiskControl(e: BiliApiException): Boolean {
+        if (e.apiCode == -412) return true
+        val m = e.apiMessage
+        return m.contains("风控") || m.contains("拦截") || m.contains("风险")
     }
 
     private fun updateDebugOverlay() {
@@ -1324,11 +1436,122 @@ class PlayerActivity : AppCompatActivity() {
         val playbackSpeed: Float,
         val preferCodec: String,
         val preferAudioId: Int,
+        val preferredQn: Int,
+        val targetQn: Int,
         val subtitleEnabled: Boolean,
         val subtitleLangOverride: String?,
         val danmaku: DanmakuSessionSettings,
         val debugEnabled: Boolean,
     )
+
+    private fun resolutionSubtitle(): String {
+        val forced = session.targetQn
+        return if (forced > 0) {
+            qnLabel(forced)
+        } else {
+            "自动(${qnLabel(session.preferredQn)})"
+        }
+    }
+
+    private fun showResolutionDialog() {
+        val options = buildResolutionOptions()
+        val currentQn = session.targetQn
+        val currentIndex =
+            options.indexOfFirst { parseResolutionFromOption(it) == currentQn }
+                .takeIf { it >= 0 } ?: 0
+        AlertDialog.Builder(this)
+            .setTitle("分辨率")
+            .setSingleChoiceItems(options.toTypedArray(), currentIndex) { dialog, which ->
+                val selected = options.getOrNull(which).orEmpty()
+                val qn = parseResolutionFromOption(selected)
+                session =
+                    session.copy(
+                        targetQn = qn,
+                    )
+                refreshSettings(binding.recyclerSettings.adapter as PlayerSettingsAdapter)
+                dialog.dismiss()
+                reloadStream(keepPosition = true)
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun buildResolutionOptions(): List<String> {
+        // Follow docs: qn list for resolution/framerate.
+        val docQns = listOf(16, 32, 64, 74, 80, 112, 116, 120, 127)
+        val available = lastAvailableQns.toSet()
+        return buildList {
+            add("自动(${qnLabel(session.preferredQn)})")
+            for (qn in docQns) {
+                val label = qnLabel(qn)
+                val prefix = qn.toString().padStart(3, ' ') + " "
+                add(if (available.contains(qn)) "${prefix}${label}（可用）" else "${prefix}${label}")
+            }
+        }
+    }
+
+    private fun parseResolutionFromOption(option: String): Int {
+        if (option.startsWith("自动")) return 0
+        val raw = option.trimStart().takeWhile { it.isDigit() }
+        return raw.toIntOrNull() ?: 0
+    }
+
+    private fun qnLabel(qn: Int): String = when (qn) {
+        16 -> "360P 流畅"
+        32 -> "480P 清晰"
+        64 -> "720P 高清"
+        74 -> "720P60 高帧率"
+        80 -> "1080P 高清"
+        112 -> "1080P+ 高码率"
+        116 -> "1080P60 高帧率"
+        120 -> "4K 超清"
+        127 -> "8K 超高清"
+        else -> "qn $qn"
+    }
+
+    private fun playUrlParamsForSession(): Pair<Int, Int> {
+        // Always request the highest; B 站会根据登录/会员权限返回实际可用清晰度。
+        val qn = 127
+        var fnval = 4048 // all available DASH video
+        fnval = fnval or 128 // 4K
+        fnval = fnval or 1024 // 8K
+        fnval = fnval or 64 // HDR (may be ignored if not allowed)
+        fnval = fnval or 512 // Dolby Vision (may be ignored if not allowed)
+        return qn to fnval
+    }
+
+    private fun applyResolutionFallbackIfNeeded(requestedQn: Int, actualQn: Int) {
+        if (requestedQn <= 0) return
+        if (actualQn <= 0 || requestedQn == actualQn) return
+        val fallbackQn = lastAvailableQns.maxByOrNull { qnRank(it) } ?: actualQn
+        session = session.copy(targetQn = fallbackQn)
+        refreshSettings(binding.recyclerSettings.adapter as PlayerSettingsAdapter)
+    }
+
+    private fun parseDashVideoQnList(playJson: JSONObject): List<Int> {
+        val data = playJson.optJSONObject("data") ?: return emptyList()
+        val dash = data.optJSONObject("dash") ?: return emptyList()
+        val videos = dash.optJSONArray("video") ?: return emptyList()
+        val list = ArrayList<Int>(videos.length())
+
+        fun baseUrl(obj: JSONObject): String =
+            obj.optString("baseUrl", obj.optString("base_url", obj.optString("url", "")))
+
+        for (i in 0 until videos.length()) {
+            val v = videos.optJSONObject(i) ?: continue
+            if (baseUrl(v).isBlank()) continue
+            val qn = v.optInt("id", 0).takeIf { it > 0 } ?: v.optInt("quality", 0)
+            if (qn > 0) list.add(qn)
+        }
+        return list.distinct().sortedBy { qnRank(it) }
+    }
+
+    private fun qnRank(qn: Int): Int {
+        // Follow docs ordering (roughly increasing quality).
+        val order = intArrayOf(6, 16, 32, 64, 74, 80, 100, 112, 116, 120, 125, 126, 127, 129)
+        val idx = order.indexOf(qn)
+        return if (idx >= 0) idx else (order.size + qn)
+    }
 
     private data class DanmakuSessionSettings(
         val enabled: Boolean,

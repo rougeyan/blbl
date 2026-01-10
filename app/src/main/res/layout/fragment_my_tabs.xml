@@ -20,6 +20,7 @@
 
         <com.google.android.material.tabs.TabLayout
             android:id="@+id/tab_layout"
+            style="@style/Widget.Blbl.TabLayout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@color/blbl_bg"

@@ -30,4 +30,16 @@
     <style name="Widget.Blbl.MaterialAlertDialog.Body.Text" parent="MaterialAlertDialog.MaterialComponents.Body.Text">
         <item name="android:textColor">@color/blbl_text_secondary</item>
     </style>
+
+    <style name="TextAppearance.Blbl.Tab" parent="TextAppearance.MaterialComponents.Button">
+        <item name="android:textSize">20sp</item>
+    </style>
+
+    <style name="Widget.Blbl.TabLayout" parent="Widget.MaterialComponents.TabLayout">
+        <item name="tabTextAppearance">@style/TextAppearance.Blbl.Tab</item>
+        <item name="tabIndicator">@drawable/blbl_tab_indicator</item>
+        <item name="tabIndicatorFullWidth">false</item>
+        <item name="tabPaddingTop">4dp</item>
+        <item name="tabPaddingBottom">2dp</item>
+    </style>
 </resources>

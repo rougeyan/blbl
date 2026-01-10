@@ -14,6 +14,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
 import java.util.Locale
+import kotlin.math.roundToLong
 
 object BiliApi {
     private const val TAG = "BiliApi"
@@ -433,6 +434,21 @@ object BiliApi {
         }
     }
 
+    private fun parseCountText(text: String): Long? {
+        val s = text.trim()
+        if (s.isBlank()) return null
+        val multiplier = when {
+            s.contains("亿") -> 100_000_000L
+            s.contains("万") -> 10_000L
+            else -> 1L
+        }
+        val numText = s.replace(Regex("[^0-9.]"), "")
+        if (numText.isBlank()) return null
+        val value = numText.toDoubleOrNull() ?: return null
+        if (value.isNaN() || value.isInfinite()) return null
+        return (value * multiplier).roundToLong()
+    }
+
     private suspend fun ensureSearchCookies(force: Boolean = false) {
         if (!force && !BiliClient.cookies.getCookieValue("buvid3").isNullOrBlank()) return
         runCatching { BiliClient.getBytes("https://www.bilibili.com/") }
@@ -506,8 +522,8 @@ object BiliApi {
                         durationSec = parseDuration(archive.optString("duration_text", "0:00")),
                         ownerName = ownerName,
                         ownerFace = ownerFace,
-                        view = stat.optString("play").toLongOrNull(),
-                        danmaku = stat.optString("danmaku").toLongOrNull(),
+                        view = parseCountText(stat.optString("play", "")),
+                        danmaku = parseCountText(stat.optString("danmaku", "")),
                         pubDateText = null,
                     ),
                 )
@@ -552,8 +568,8 @@ object BiliApi {
                         durationSec = parseDuration(archive.optString("duration_text", "0:00")),
                         ownerName = ownerName,
                         ownerFace = ownerFace,
-                        view = stat.optString("play").toLongOrNull(),
-                        danmaku = stat.optString("danmaku").toLongOrNull(),
+                        view = parseCountText(stat.optString("play", "")),
+                        danmaku = parseCountText(stat.optString("danmaku", "")),
                         pubDateText = null,
                     ),
                 )

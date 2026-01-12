@@ -272,18 +272,18 @@ class LiveGridFragment : Fragment() {
         }
 
         val recycler = binding.recycler
-        recycler.post {
-            if (_binding == null) return@post
+        recycler.post outer@{
+            if (_binding == null) return@outer
             val vh = recycler.findViewHolderForAdapterPosition(0)
             if (vh != null) {
                 vh.itemView.requestFocus()
                 pendingFocusFirstCardFromTab = false
                 pendingFocusFirstCardFromContentSwitch = false
-                return@post
+                return@outer
             }
             recycler.scrollToPosition(0)
-            recycler.post {
-                if (_binding == null) return@post
+            recycler.post inner@{
+                if (_binding == null) return@inner
                 recycler.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus()
                 pendingFocusFirstCardFromTab = false
                 pendingFocusFirstCardFromContentSwitch = false

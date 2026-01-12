@@ -26,6 +26,19 @@ object ImageUrl {
         return nu + suffix
     }
 
+    fun poster(url: String?): String? {
+        val u = url ?: return null
+        if (u.isBlank()) return null
+        val nu = normalize(u)
+        if (nu.contains("@")) return nu
+        val suffix = when (BiliClient.prefs.imageQuality) {
+            "small" -> "@240w_340h_1c.webp"
+            "large" -> "@480w_680h_1c.webp"
+            else -> "@360w_510h_1c.webp"
+        }
+        return nu + suffix
+    }
+
     fun avatar(url: String?): String? {
         val u = url ?: return null
         if (u.isBlank()) return null

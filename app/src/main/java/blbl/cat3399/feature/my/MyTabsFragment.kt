@@ -40,11 +40,13 @@ class MyTabsFragment : Fragment(), MyTabContentSwitchFocusHost {
                 }
         }.attach()
 
-        binding.tabLayout.post {
-            binding.tabLayout.enableDpadTabFocus { position ->
+        val tabLayout = binding.tabLayout
+        tabLayout.post {
+            if (_binding == null) return@post
+            tabLayout.enableDpadTabFocus { position ->
                 AppLog.d("My", "tab focus pos=$position t=${SystemClock.uptimeMillis()}")
             }
-            val tabStrip = binding.tabLayout.getChildAt(0) as? ViewGroup ?: return@post
+            val tabStrip = tabLayout.getChildAt(0) as? ViewGroup ?: return@post
             for (i in 0 until tabStrip.childCount) {
                 tabStrip.getChildAt(i).setOnKeyListener { _, keyCode, event ->
                     if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {

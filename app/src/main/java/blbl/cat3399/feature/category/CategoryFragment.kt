@@ -51,15 +51,17 @@ class CategoryFragment : Fragment(), VideoGridTabSwitchFocusHost {
         TabLayoutMediator(binding.tabLayout, binding.viewPager) { tab, position ->
             tab.text = zones[position].title
         }.attach()
-        binding.tabLayout.post {
-            binding.tabLayout.enableDpadTabFocus { position ->
+        val tabLayout = binding.tabLayout
+        tabLayout.post {
+            if (_binding == null) return@post
+            tabLayout.enableDpadTabFocus { position ->
                 val zone = zones.getOrNull(position)
                 AppLog.d(
                     "Category",
                     "tab focus pos=$position title=${zone?.title} tid=${zone?.tid} t=${SystemClock.uptimeMillis()}",
                 )
             }
-            val tabStrip = binding.tabLayout.getChildAt(0) as? ViewGroup ?: return@post
+            val tabStrip = tabLayout.getChildAt(0) as? ViewGroup ?: return@post
             for (i in 0 until tabStrip.childCount) {
                 tabStrip.getChildAt(i).setOnKeyListener { _, keyCode, event ->
                     if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {

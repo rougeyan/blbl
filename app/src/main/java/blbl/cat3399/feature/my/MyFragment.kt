@@ -51,11 +51,19 @@ class MyFragment : Fragment(), BackPressHandler, MyNavigator {
             .commit()
     }
 
-    override fun openBangumiDetail(seasonId: Long, isDrama: Boolean) {
+    override fun openBangumiDetail(seasonId: Long, isDrama: Boolean, continueEpId: Long?, continueEpIndex: Int?) {
         if (_binding == null || childFragmentManager.isStateSaved) return
         childFragmentManager.beginTransaction()
             .setReorderingAllowed(true)
-            .replace(R.id.my_container, MyBangumiDetailFragment.newInstance(seasonId = seasonId, isDrama = isDrama))
+            .replace(
+                R.id.my_container,
+                MyBangumiDetailFragment.newInstance(
+                    seasonId = seasonId,
+                    isDrama = isDrama,
+                    continueEpId = continueEpId,
+                    continueEpIndex = continueEpIndex,
+                ),
+            )
             .addToBackStack(null)
             .commit()
     }

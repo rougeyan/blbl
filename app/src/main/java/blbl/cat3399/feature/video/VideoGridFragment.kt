@@ -229,9 +229,7 @@ class VideoGridFragment : Fragment() {
                 } else {
                     adapter.append(filtered)
                 }
-                binding.recycler.post {
-                    maybeConsumePendingFocusFirstCard()
-                }
+                _binding?.recycler?.post { maybeConsumePendingFocusFirstCard() }
 
                 if (source == SRC_RECOMMEND) {
                     recommendFetchRow += cards.size
@@ -249,9 +247,9 @@ class VideoGridFragment : Fragment() {
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
                 AppLog.e("VideoGrid", "load failed source=$source rid=$rid page=$page", t)
-                Toast.makeText(requireContext(), "加载失败，可查看 Logcat(标签 BLBL)", Toast.LENGTH_SHORT).show()
+                context?.let { Toast.makeText(it, "加载失败，可查看 Logcat(标签 BLBL)", Toast.LENGTH_SHORT).show() }
             } finally {
-                if (isRefresh && token == requestToken) binding.swipeRefresh.isRefreshing = false
+                if (isRefresh && token == requestToken) _binding?.swipeRefresh?.isRefreshing = false
                 isLoadingMore = false
                 AppLog.d(
                     "VideoGrid",
@@ -312,17 +310,20 @@ class VideoGridFragment : Fragment() {
             return true
         }
 
-        binding.recycler.post {
-            val vh = binding.recycler.findViewHolderForAdapterPosition(0)
+        val recycler = binding.recycler
+        recycler.post outerPost@{
+            if (_binding == null) return@outerPost
+            val vh = recycler.findViewHolderForAdapterPosition(0)
             if (vh != null) {
                 vh.itemView.requestFocus()
                 pendingFocusFirstCardFromTab = false
                 pendingFocusFirstCardFromContentSwitch = false
-                return@post
+                return@outerPost
             }
-            binding.recycler.scrollToPosition(0)
-            binding.recycler.post {
-                binding.recycler.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus()
+            recycler.scrollToPosition(0)
+            recycler.post innerPost@{
+                if (_binding == null) return@innerPost
+                recycler.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus()
                 pendingFocusFirstCardFromTab = false
                 pendingFocusFirstCardFromContentSwitch = false
             }

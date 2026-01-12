@@ -8,6 +8,7 @@ data class BangumiSeason(
     val progressText: String?,
     val totalCount: Int?,
     val lastEpIndex: Int?,
+    val lastEpId: Long?,
     val newestEpIndex: Int?,
     val isFinish: Boolean?,
 )
@@ -33,4 +34,5 @@ data class BangumiSeasonDetail(
     val views: Long?,
     val danmaku: Long?,
     val episodes: List<BangumiEpisode>,
+    val progressLastEpId: Long?,
 )

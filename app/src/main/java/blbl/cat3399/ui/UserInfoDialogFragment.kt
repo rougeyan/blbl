@@ -89,34 +89,37 @@ class UserInfoDialogFragment : DialogFragment() {
 
                 val stat = if (mid > 0) BiliApi.relationStat(mid) else null
 
-                binding.tvName.text = name
-                binding.tvMid.text = getString(R.string.label_uid_fmt, mid.toString())
+                val b = _binding ?: return@launch
+                b.tvName.text = name
+                b.tvMid.text = getString(R.string.label_uid_fmt, mid.toString())
                 val normalizedUrl = blbl.cat3399.core.image.ImageUrl.avatar(avatarUrl)
-                ImageLoader.loadInto(binding.ivAvatar, normalizedUrl)
+                ImageLoader.loadInto(b.ivAvatar, normalizedUrl)
 
-                binding.tvFollowing.text = (stat?.following ?: 0L).toString()
-                binding.tvFollower.text = (stat?.follower ?: 0L).toString()
-                binding.tvCoins.text = formatCoins(coins)
+                b.tvFollowing.text = (stat?.following ?: 0L).toString()
+                b.tvFollower.text = (stat?.follower ?: 0L).toString()
+                b.tvCoins.text = formatCoins(coins)
 
-                binding.tvLevel.text = getString(R.string.label_level_fmt, level)
+                b.tvLevel.text = getString(R.string.label_level_fmt, level)
                 val expText = if (nextExp != null && nextExp > 0) "$currentExp/$nextExp" else "已满级"
-                binding.tvExp.text = getString(R.string.label_exp_fmt, expText)
+                b.tvExp.text = getString(R.string.label_exp_fmt, expText)
 
                 if (nextExp != null && nextExp > 0) {
-                    binding.progressExp.visibility = View.VISIBLE
-                    binding.progressExp.max = nextExp
-                    binding.progressExp.progress = currentExp.coerceIn(0, nextExp)
+                    b.progressExp.visibility = View.VISIBLE
+                    b.progressExp.max = nextExp
+                    b.progressExp.progress = currentExp.coerceIn(0, nextExp)
                 } else {
-                    binding.progressExp.visibility = View.GONE
+                    b.progressExp.visibility = View.GONE
                 }
             }.onFailure {
                 AppLog.w("UserInfoDialog", "load failed", it)
                 if (isAdded) {
-                    binding.tvName.text = "加载失败"
-                    binding.tvMid.text = it.message.orEmpty()
+                    _binding?.let { b ->
+                        b.tvName.text = "加载失败"
+                        b.tvMid.text = it.message.orEmpty()
+                    }
                 }
             }
-            binding.pbLoading.visibility = View.GONE
+            _binding?.pbLoading?.visibility = View.GONE
         }
     }
 

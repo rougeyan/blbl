@@ -403,13 +403,15 @@ class SearchFragment : Fragment(), BackPressHandler {
 	        binding.tabLayout.addTab(binding.tabLayout.newTab().setText(R.string.search_tab_media))
 	        binding.tabLayout.addTab(binding.tabLayout.newTab().setText(R.string.search_tab_live))
 	        binding.tabLayout.addTab(binding.tabLayout.newTab().setText(R.string.search_tab_user))
-	        binding.tabLayout.post {
-	            binding.tabLayout.enableDpadTabFocus()
-	            val tabStrip = binding.tabLayout.getChildAt(0) as? ViewGroup ?: return@post
-	            for (i in 0 until tabStrip.childCount) {
-	                tabStrip.getChildAt(i).setOnKeyListener { _, keyCode, event ->
-	                    if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
-	                    when (keyCode) {
+        val tabLayout = binding.tabLayout
+        tabLayout.post {
+            if (_binding == null) return@post
+            tabLayout.enableDpadTabFocus()
+            val tabStrip = tabLayout.getChildAt(0) as? ViewGroup ?: return@post
+            for (i in 0 until tabStrip.childCount) {
+                tabStrip.getChildAt(i).setOnKeyListener { _, keyCode, event ->
+                    if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+                    when (keyCode) {
 	                        KeyEvent.KEYCODE_DPAD_UP -> {
 	                            // Prevent focus escaping to sidebar when pressing UP on top controls.
 	                            true
@@ -574,13 +576,14 @@ class SearchFragment : Fragment(), BackPressHandler {
         return list.take(limit)
     }
 
-	    private fun focusSelectedTab(): Boolean {
-	        val tabStrip = binding.tabLayout.getChildAt(0) as? ViewGroup ?: return false
-	        val pos = binding.tabLayout.selectedTabPosition.takeIf { it >= 0 } ?: 0
-	        val tabView = tabStrip.getChildAt(pos) ?: return false
-	        tabView.requestFocus()
-	        return true
-	    }
+        private fun focusSelectedTab(): Boolean {
+            val b = _binding ?: return false
+            val tabStrip = b.tabLayout.getChildAt(0) as? ViewGroup ?: return false
+            val pos = b.tabLayout.selectedTabPosition.takeIf { it >= 0 } ?: 0
+            val tabView = tabStrip.getChildAt(pos) ?: return false
+            tabView.requestFocus()
+            return true
+        }
 
 	    private fun focusFirstResultCardFromTab(): Boolean {
 	        if (binding.panelResults.visibility != View.VISIBLE) return false
@@ -595,8 +598,11 @@ class SearchFragment : Fragment(), BackPressHandler {
             return if (currentTabIndex == 0) {
                 requestFocusFirstResultCardFromTabSwitch()
             } else {
-                binding.panelResults.post {
-                    binding.tvResultsPlaceholder.requestFocus()
+                val panel = binding.panelResults
+                val placeholder = binding.tvResultsPlaceholder
+                panel.post {
+                    if (_binding == null) return@post
+                    placeholder.requestFocus()
                 }
                 true
             }
@@ -627,16 +633,19 @@ class SearchFragment : Fragment(), BackPressHandler {
                 return true
             }
 
-            binding.recyclerResults.post {
-                val vh = binding.recyclerResults.findViewHolderForAdapterPosition(0)
+            val recycler = binding.recyclerResults
+            recycler.post outer@{
+                if (_binding == null) return@outer
+                val vh = recycler.findViewHolderForAdapterPosition(0)
                 if (vh != null) {
                     vh.itemView.requestFocus()
                     pendingFocusFirstResultCardFromTabSwitch = false
-                    return@post
+                    return@outer
                 }
-                binding.recyclerResults.scrollToPosition(0)
-                binding.recyclerResults.post {
-                    binding.recyclerResults.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() ?: binding.recyclerResults.requestFocus()
+                recycler.scrollToPosition(0)
+                recycler.post inner@{
+                    if (_binding == null) return@inner
+                    recycler.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() ?: recycler.requestFocus()
                     pendingFocusFirstResultCardFromTabSwitch = false
                 }
             }
@@ -651,12 +660,14 @@ class SearchFragment : Fragment(), BackPressHandler {
 	        val next = cur + 1
             if (next >= binding.tabLayout.tabCount) return false
 	        binding.tabLayout.getTabAt(next)?.select() ?: return false
-	        binding.tabLayout.post {
+            val tabLayout = binding.tabLayout
+            tabLayout.post {
+                if (_binding == null) return@post
                 requestFocusResultsContentFromTabSwitch()
                     || tabStrip.getChildAt(next)?.requestFocus() == true
             }
-	        return true
-	    }
+            return true
+        }
 
         private fun switchToPrevTabFromContentEdge(): Boolean {
             if (binding.panelResults.visibility != View.VISIBLE) return false
@@ -666,7 +677,9 @@ class SearchFragment : Fragment(), BackPressHandler {
             val prev = cur - 1
             if (prev < 0) return false
             binding.tabLayout.getTabAt(prev)?.select() ?: return false
-            binding.tabLayout.post {
+            val tabLayout = binding.tabLayout
+            tabLayout.post {
+                if (_binding == null) return@post
                 requestFocusResultsContentFromTabSwitch()
                     || tabStrip.getChildAt(prev)?.requestFocus() == true
             }
@@ -686,9 +699,11 @@ class SearchFragment : Fragment(), BackPressHandler {
 	        val count = binding.recyclerKeys.adapter?.itemCount ?: return false
 	        if (count <= 0) return false
 	        val safePos = pos.coerceIn(0, count - 1)
-        binding.recyclerKeys.scrollToPosition(safePos)
-        binding.recyclerKeys.post {
-            binding.recyclerKeys.findViewHolderForAdapterPosition(safePos)?.itemView?.requestFocus()
+        val recycler = binding.recyclerKeys
+        recycler.scrollToPosition(safePos)
+        recycler.post {
+            if (_binding == null) return@post
+            recycler.findViewHolderForAdapterPosition(safePos)?.itemView?.requestFocus()
         }
         return true
     }
@@ -699,9 +714,11 @@ class SearchFragment : Fragment(), BackPressHandler {
         val count = binding.recyclerSuggest.adapter?.itemCount ?: return false
         if (count <= 0) return false
         val safePos = pos.coerceIn(0, count - 1)
-        binding.recyclerSuggest.scrollToPosition(safePos)
-        binding.recyclerSuggest.post {
-            binding.recyclerSuggest.findViewHolderForAdapterPosition(safePos)?.itemView?.requestFocus()
+        val recycler = binding.recyclerSuggest
+        recycler.scrollToPosition(safePos)
+        recycler.post {
+            if (_binding == null) return@post
+            recycler.findViewHolderForAdapterPosition(safePos)?.itemView?.requestFocus()
         }
         return true
     }
@@ -712,16 +729,20 @@ class SearchFragment : Fragment(), BackPressHandler {
         val count = binding.recyclerSuggest.adapter?.itemCount ?: return false
         if (count <= 0) return false
         val last = count - 1
-        binding.recyclerSuggest.scrollToPosition(last)
-        binding.recyclerSuggest.post {
-            binding.recyclerSuggest.findViewHolderForAdapterPosition(last)?.itemView?.requestFocus()
+        val recycler = binding.recyclerSuggest
+        recycler.scrollToPosition(last)
+        recycler.post {
+            if (_binding == null) return@post
+            recycler.findViewHolderForAdapterPosition(last)?.itemView?.requestFocus()
         }
         return true
     }
 
     private fun focusSelectedTabAfterShow() {
-        binding.tabLayout.post {
-            if (binding.panelResults.visibility == View.VISIBLE) {
+        val tabLayout = binding.tabLayout
+        tabLayout.post {
+            val b = _binding ?: return@post
+            if (b.panelResults.visibility == View.VISIBLE) {
                 focusSelectedTab()
             }
         }
@@ -744,15 +765,16 @@ class SearchFragment : Fragment(), BackPressHandler {
     }
 
     private fun resetAndLoad() {
-        if (binding.panelResults.visibility != View.VISIBLE) return
+        val b = _binding ?: return
+        if (b.panelResults.visibility != View.VISIBLE) return
         if (currentTabIndex != 0) return
         loadedBvids.clear()
         endReached = false
         isLoadingMore = false
         page = 1
         requestToken++
-        binding.recyclerResults.scrollToPosition(0)
-        binding.swipeRefresh.isRefreshing = true
+        b.recyclerResults.scrollToPosition(0)
+        b.swipeRefresh.isRefreshing = true
         loadNextPage(isRefresh = true)
     }
 
@@ -776,10 +798,10 @@ class SearchFragment : Fragment(), BackPressHandler {
                     return@launch
                 }
 
-	                val filtered = list.filter { loadedBvids.add(it.bvid) }
-	                if (page == 1) resultAdapter.submit(filtered) else resultAdapter.append(filtered)
-                    binding.recyclerResults.post { maybeConsumePendingFocusFirstResultCardFromTabSwitch() }
-	                page++
+                val filtered = list.filter { loadedBvids.add(it.bvid) }
+                if (page == 1) resultAdapter.submit(filtered) else resultAdapter.append(filtered)
+                _binding?.recyclerResults?.post { maybeConsumePendingFocusFirstResultCardFromTabSwitch() }
+                page++
 
                 if (res.pages in 1..page && page > res.pages) endReached = true
                 if (filtered.isEmpty()) endReached = true
@@ -787,9 +809,9 @@ class SearchFragment : Fragment(), BackPressHandler {
                 AppLog.i("Search", "load ok add=${filtered.size} total=${resultAdapter.itemCount} cost=${SystemClock.uptimeMillis() - startAt}ms")
             } catch (t: Throwable) {
                 AppLog.e("Search", "load failed page=$page", t)
-                Toast.makeText(requireContext(), "搜索失败，可查看 Logcat(标签 BLBL)", Toast.LENGTH_SHORT).show()
+                context?.let { Toast.makeText(it, "搜索失败，可查看 Logcat(标签 BLBL)", Toast.LENGTH_SHORT).show() }
             } finally {
-                if (isRefresh && token == requestToken) binding.swipeRefresh.isRefreshing = false
+                if (isRefresh && token == requestToken) _binding?.swipeRefresh?.isRefreshing = false
                 isLoadingMore = false
             }
         }
@@ -809,8 +831,10 @@ class SearchFragment : Fragment(), BackPressHandler {
                 val picked = items.getOrNull(which) ?: return@setSingleChoiceItems
                 if (picked != currentOrder) {
                     currentOrder = picked
-                    binding.tvSort.text = getString(currentOrder.labelRes)
-                    resetAndLoad()
+                    _binding?.let { b ->
+                        b.tvSort.text = getString(currentOrder.labelRes)
+                        resetAndLoad()
+                    }
                 }
                 dialog.dismiss()
             }

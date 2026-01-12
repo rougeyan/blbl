@@ -9,6 +9,7 @@ import android.content.Intent
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.image.ImageLoader
 import blbl.cat3399.core.image.ImageUrl
@@ -25,9 +26,22 @@ class MyBangumiDetailFragment : Fragment() {
 
     private val seasonId: Long by lazy { requireArguments().getLong(ARG_SEASON_ID) }
     private val isDrama: Boolean by lazy { requireArguments().getBoolean(ARG_IS_DRAMA) }
+    private val continueEpIdArg: Long? by lazy { requireArguments().getLong(ARG_CONTINUE_EP_ID, -1L).takeIf { it > 0 } }
+    private val continueEpIndexArg: Int? by lazy { requireArguments().getInt(ARG_CONTINUE_EP_INDEX, -1).takeIf { it > 0 } }
 
     private lateinit var epAdapter: BangumiEpisodeAdapter
     private var currentEpisodes: List<BangumiEpisode> = emptyList()
+    private var continueEpisode: BangumiEpisode? = null
+    private var pendingAutoFocusFirstEpisode: Boolean = true
+    private var autoFocusAttempts: Int = 0
+    private var epDataObserver: RecyclerView.AdapterDataObserver? = null
+    private var pendingAutoFocusPrimary: Boolean = true
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        pendingAutoFocusFirstEpisode = savedInstanceState == null
+        pendingAutoFocusPrimary = savedInstanceState == null
+    }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentMyBangumiDetailBinding.inflate(inflater, container, false)
@@ -44,14 +58,21 @@ class MyBangumiDetailFragment : Fragment() {
             }
         binding.recyclerEpisodes.adapter = epAdapter
         binding.recyclerEpisodes.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        epDataObserver =
+            object : RecyclerView.AdapterDataObserver() {
+                override fun onChanged() {
+                    tryAutoFocusFirstEpisode()
+                    tryAutoFocusPrimary()
+                }
+            }.also { epAdapter.registerAdapterDataObserver(it) }
 
         binding.btnPrimary.setOnClickListener {
-            val first = currentEpisodes.firstOrNull()
-            if (first == null) {
+            val ep = continueEpisode ?: currentEpisodes.firstOrNull()
+            if (ep == null) {
                 Toast.makeText(requireContext(), "暂无可播放剧集", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            playEpisode(first)
+            playEpisode(ep)
         }
         binding.btnSecondary.setOnClickListener {
             Toast.makeText(requireContext(), "暂不支持操作", Toast.LENGTH_SHORT).show()
@@ -60,15 +81,89 @@ class MyBangumiDetailFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+        tryAutoFocusPrimary()
         load()
+    }
+
+    private fun tryAutoFocusPrimary() {
+        if (!pendingAutoFocusPrimary) return
+        if (!isResumed) return
+        val b = _binding ?: return
+        val focused = activity?.currentFocus
+        if (focused != null && isDescendantOf(focused, b.root) && focused != b.btnBack) {
+            pendingAutoFocusPrimary = false
+            return
+        }
+        b.root.post {
+            val bb = _binding ?: return@post
+            if (!isResumed) return@post
+            if (!pendingAutoFocusPrimary) return@post
+            val focused2 = activity?.currentFocus
+            if (focused2 != null && isDescendantOf(focused2, bb.root) && focused2 != bb.btnBack) {
+                pendingAutoFocusPrimary = false
+                return@post
+            }
+            if (bb.btnPrimary.requestFocus()) {
+                pendingAutoFocusPrimary = false
+            }
+        }
+    }
+
+    private fun tryAutoFocusFirstEpisode() {
+        if (!pendingAutoFocusFirstEpisode) return
+        if (!isResumed) return
+        val b = _binding ?: return
+        if (!this::epAdapter.isInitialized) return
+        if (epAdapter.itemCount <= 0) return
+
+        val recycler = b.recyclerEpisodes
+        val focused = activity?.currentFocus
+        if (focused != null && isDescendantOf(focused, recycler)) {
+            pendingAutoFocusFirstEpisode = false
+            return
+        }
+        if (continueEpisode != null) {
+            pendingAutoFocusFirstEpisode = false
+            return
+        }
+
+        autoFocusAttempts++
+        if (autoFocusAttempts > 60) {
+            pendingAutoFocusFirstEpisode = false
+            return
+        }
+
+        recycler.post {
+            val bb = _binding ?: return@post
+            if (!isResumed) return@post
+            if (!pendingAutoFocusFirstEpisode) return@post
+            if (epAdapter.itemCount <= 0) return@post
+
+            val r = bb.recyclerEpisodes
+            val focused2 = activity?.currentFocus
+            if (focused2 != null && isDescendantOf(focused2, r)) {
+                pendingAutoFocusFirstEpisode = false
+                return@post
+            }
+
+            val success = r.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() == true
+            if (success) {
+                pendingAutoFocusFirstEpisode = false
+                return@post
+            }
+
+            r.scrollToPosition(0)
+            r.postDelayed({ tryAutoFocusFirstEpisode() }, 16)
+        }
     }
 
     private fun load() {
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val detail = BiliApi.bangumiSeasonDetail(seasonId = seasonId)
-                binding.tvTitle.text = detail.title
-                binding.tvDesc.text = detail.evaluate.orEmpty()
+                val b = _binding ?: return@launch
+                b.tvTitle.text = detail.title
+                b.tvDesc.text = detail.evaluate.orEmpty()
 
                 val metaParts = buildList {
                     detail.subtitle?.takeIf { it.isNotBlank() }?.let { add(it) }
@@ -76,13 +171,21 @@ class MyBangumiDetailFragment : Fragment() {
                     detail.views?.let { add("${Format.count(it)}次观看") }
                     detail.danmaku?.let { add("${Format.count(it)}条弹幕") }
                 }
-                binding.tvMeta.text = metaParts.joinToString(" | ")
-                ImageLoader.loadInto(binding.ivCover, ImageUrl.cover(detail.coverUrl))
+                b.tvMeta.text = metaParts.joinToString(" | ")
+                ImageLoader.loadInto(b.ivCover, ImageUrl.poster(detail.coverUrl))
                 currentEpisodes = detail.episodes
+                continueEpisode =
+                    (continueEpIdArg ?: detail.progressLastEpId)?.let { id ->
+                        detail.episodes.firstOrNull { it.epId == id }
+                    } ?: continueEpIndexArg?.let { idx ->
+                        detail.episodes.firstOrNull { it.title.trim() == idx.toString() }
+                    }
                 epAdapter.submit(detail.episodes)
+                tryAutoFocusFirstEpisode()
+                tryAutoFocusPrimary()
             } catch (t: Throwable) {
                 AppLog.e("MyBangumiDetail", "load failed seasonId=$seasonId", t)
-                Toast.makeText(requireContext(), "加载失败，可查看 Logcat(标签 BLBL)", Toast.LENGTH_SHORT).show()
+                context?.let { Toast.makeText(it, "加载失败，可查看 Logcat(标签 BLBL)", Toast.LENGTH_SHORT).show() }
             }
         }
     }
@@ -104,6 +207,10 @@ class MyBangumiDetailFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        if (this::epAdapter.isInitialized) {
+            epDataObserver?.let { epAdapter.unregisterAdapterDataObserver(it) }
+        }
+        epDataObserver = null
         _binding = null
         super.onDestroyView()
     }
@@ -111,12 +218,21 @@ class MyBangumiDetailFragment : Fragment() {
     companion object {
         private const val ARG_SEASON_ID = "season_id"
         private const val ARG_IS_DRAMA = "is_drama"
+        private const val ARG_CONTINUE_EP_ID = "continue_ep_id"
+        private const val ARG_CONTINUE_EP_INDEX = "continue_ep_index"
 
-        fun newInstance(seasonId: Long, isDrama: Boolean): MyBangumiDetailFragment =
+        fun newInstance(
+            seasonId: Long,
+            isDrama: Boolean,
+            continueEpId: Long?,
+            continueEpIndex: Int?,
+        ): MyBangumiDetailFragment =
             MyBangumiDetailFragment().apply {
                 arguments = Bundle().apply {
                     putLong(ARG_SEASON_ID, seasonId)
                     putBoolean(ARG_IS_DRAMA, isDrama)
+                    continueEpId?.let { putLong(ARG_CONTINUE_EP_ID, it) }
+                    continueEpIndex?.let { putInt(ARG_CONTINUE_EP_INDEX, it) }
                 }
             }
     }

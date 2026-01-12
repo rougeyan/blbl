@@ -141,16 +141,19 @@ class MyFavFoldersFragment : Fragment(), MyTabSwitchFocusTarget {
             return true
         }
 
-        binding.recycler.post {
-            val vh = binding.recycler.findViewHolderForAdapterPosition(0)
+        val recycler = binding.recycler
+        recycler.post outerPost@{
+            if (_binding == null) return@outerPost
+            val vh = recycler.findViewHolderForAdapterPosition(0)
             if (vh != null) {
                 vh.itemView.requestFocus()
                 pendingFocusFirstItemFromTabSwitch = false
-                return@post
+                return@outerPost
             }
-            binding.recycler.scrollToPosition(0)
-            binding.recycler.post {
-                binding.recycler.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() ?: binding.recycler.requestFocus()
+            recycler.scrollToPosition(0)
+            recycler.post innerPost@{
+                if (_binding == null) return@innerPost
+                recycler.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() ?: recycler.requestFocus()
                 pendingFocusFirstItemFromTabSwitch = false
             }
         }
@@ -180,13 +183,13 @@ class MyFavFoldersFragment : Fragment(), MyTabSwitchFocusTarget {
                 val folders = BiliApi.favFolders(upMid = mid)
                 if (token != requestToken) return@launch
                 adapter.submit(folders)
-                binding.recycler.post { maybeConsumePendingFocusFirstItemFromTabSwitch() }
+                _binding?.recycler?.post { maybeConsumePendingFocusFirstItemFromTabSwitch() }
                 restoreFocusIfNeeded()
             } catch (t: Throwable) {
                 AppLog.e("MyFav", "load failed", t)
-                Toast.makeText(requireContext(), "加载失败，可查看 Logcat(标签 BLBL)", Toast.LENGTH_SHORT).show()
+                context?.let { Toast.makeText(it, "加载失败，可查看 Logcat(标签 BLBL)", Toast.LENGTH_SHORT).show() }
             } finally {
-                if (token == requestToken) binding.swipeRefresh.isRefreshing = false
+                if (token == requestToken) _binding?.swipeRefresh?.isRefreshing = false
             }
         }
     }
@@ -195,10 +198,13 @@ class MyFavFoldersFragment : Fragment(), MyTabSwitchFocusTarget {
         val pos = pendingRestorePosition ?: return
         if (_binding == null) return
         if (pos < 0 || pos >= adapter.itemCount) return
-        binding.recycler.post {
-            binding.recycler.scrollToPosition(pos)
-            binding.recycler.post {
-                binding.recycler.findViewHolderForAdapterPosition(pos)?.itemView?.requestFocus()
+        val recycler = binding.recycler
+        recycler.post outerPost@{
+            if (_binding == null) return@outerPost
+            recycler.scrollToPosition(pos)
+            recycler.post innerPost@{
+                if (_binding == null) return@innerPost
+                recycler.findViewHolderForAdapterPosition(pos)?.itemView?.requestFocus()
                 pendingRestorePosition = null
             }
         }

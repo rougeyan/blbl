@@ -772,6 +772,7 @@ object BiliApi {
                     val obj = list.optJSONObject(i) ?: continue
                     val seasonId = obj.optLong("season_id").takeIf { it > 0 } ?: continue
                     val progressAny = obj.opt("progress")
+                    val progressObj = progressAny as? JSONObject
                     val progressText =
                         when (progressAny) {
                             is JSONObject -> {
@@ -781,6 +782,10 @@ object BiliApi {
                             is String -> progressAny.takeIf { it.isNotBlank() }
                             else -> null
                         }
+                    val progressLastEpId =
+                        progressObj?.optLong("last_ep_id")?.takeIf { it > 0 }
+                            ?: progressObj?.optLong("last_epid")?.takeIf { it > 0 }
+                            ?: obj.optLong("last_ep_id").takeIf { it > 0 }
                     out.add(
                         BangumiSeason(
                             seasonId = seasonId,
@@ -792,6 +797,7 @@ object BiliApi {
                             isFinish = obj.optInt("is_finish", -1).takeIf { it >= 0 }?.let { it == 1 },
                             newestEpIndex = obj.optInt("newest_ep_index").takeIf { it > 0 },
                             lastEpIndex = obj.optInt("last_ep_index").takeIf { it > 0 },
+                            lastEpId = progressLastEpId,
                         ),
                     )
                 }
@@ -812,6 +818,11 @@ object BiliApi {
             throw BiliApiException(apiCode = code, apiMessage = msg)
         }
         val result = json.optJSONObject("result") ?: JSONObject()
+        val progressLastEpId =
+            result.optJSONObject("user_status")?.optJSONObject("progress")?.optLong("last_ep_id")?.takeIf { it > 0 }
+                ?: result.optJSONObject("user_status")?.optLong("progress")?.takeIf { it > 0 }
+                ?: result.optJSONObject("progress")?.optLong("last_ep_id")?.takeIf { it > 0 }
+                ?: result.optLong("last_ep_id").takeIf { it > 0 }
         val ratingScore = result.optJSONObject("rating")?.optDouble("score")?.takeIf { it > 0 }
         val stat = result.optJSONObject("stat") ?: JSONObject()
         val views = stat.optLong("views").takeIf { it > 0 } ?: stat.optLong("view").takeIf { it > 0 }
@@ -848,6 +859,7 @@ object BiliApi {
             views = views,
             danmaku = danmaku,
             episodes = epList,
+            progressLastEpId = progressLastEpId,
         )
     }
 

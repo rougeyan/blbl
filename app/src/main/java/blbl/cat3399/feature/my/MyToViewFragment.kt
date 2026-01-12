@@ -140,16 +140,19 @@ class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget {
             return true
         }
 
-        binding.recycler.post {
-            val vh = binding.recycler.findViewHolderForAdapterPosition(0)
+        val recycler = binding.recycler
+        recycler.post outerPost@{
+            if (_binding == null) return@outerPost
+            val vh = recycler.findViewHolderForAdapterPosition(0)
             if (vh != null) {
                 vh.itemView.requestFocus()
                 pendingFocusFirstItemFromTabSwitch = false
-                return@post
+                return@outerPost
             }
-            binding.recycler.scrollToPosition(0)
-            binding.recycler.post {
-                binding.recycler.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() ?: binding.recycler.requestFocus()
+            recycler.scrollToPosition(0)
+            recycler.post innerPost@{
+                if (_binding == null) return@innerPost
+                recycler.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() ?: recycler.requestFocus()
                 pendingFocusFirstItemFromTabSwitch = false
             }
         }
@@ -176,12 +179,12 @@ class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget {
                 val list = BiliApi.toViewList()
                 if (token != requestToken) return@launch
                 adapter.submit(list)
-                binding.recycler.post { maybeConsumePendingFocusFirstItemFromTabSwitch() }
+                _binding?.recycler?.post { maybeConsumePendingFocusFirstItemFromTabSwitch() }
             } catch (t: Throwable) {
                 AppLog.e("MyToView", "load failed", t)
-                Toast.makeText(requireContext(), "加载失败，可查看 Logcat(标签 BLBL)", Toast.LENGTH_SHORT).show()
+                context?.let { Toast.makeText(it, "加载失败，可查看 Logcat(标签 BLBL)", Toast.LENGTH_SHORT).show() }
             } finally {
-                if (token == requestToken) binding.swipeRefresh.isRefreshing = false
+                if (token == requestToken) _binding?.swipeRefresh?.isRefreshing = false
             }
         }
     }

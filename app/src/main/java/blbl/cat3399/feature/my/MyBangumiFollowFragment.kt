@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
+import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.databinding.FragmentVideoGridBinding
 import kotlinx.coroutines.launch
 
@@ -42,12 +43,17 @@ class MyBangumiFollowFragment : Fragment(), MyTabSwitchFocusTarget {
             adapter = BangumiFollowAdapter { position, season ->
                 pendingRestorePosition = position
                 val nav = parentFragment?.parentFragment as? MyNavigator
-                nav?.openBangumiDetail(season.seasonId, isDrama = type == 2)
+                nav?.openBangumiDetail(
+                    seasonId = season.seasonId,
+                    isDrama = type == 2,
+                    continueEpId = season.lastEpId,
+                    continueEpIndex = season.lastEpIndex,
+                )
             }
         }
         binding.recycler.adapter = adapter
         binding.recycler.setHasFixedSize(true)
-        binding.recycler.layoutManager = GridLayoutManager(requireContext(), spanCountForWidth(resources))
+        binding.recycler.layoutManager = GridLayoutManager(requireContext(), spanCountForBangumi(resources))
         (binding.recycler.itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
         binding.recycler.clearOnScrollListeners()
         binding.recycler.addOnChildAttachStateChangeListener(
@@ -127,10 +133,22 @@ class MyBangumiFollowFragment : Fragment(), MyTabSwitchFocusTarget {
 
     override fun onResume() {
         super.onResume()
-        (binding.recycler.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth(resources)
+        (binding.recycler.layoutManager as? GridLayoutManager)?.spanCount = spanCountForBangumi(resources)
         maybeTriggerInitialLoad()
         restoreFocusIfNeeded()
         maybeConsumePendingFocusFirstItemFromTabSwitch()
+    }
+
+    private fun spanCountForBangumi(resources: android.content.res.Resources): Int {
+        val prefs = BiliClient.prefs
+        val override = prefs.gridSpanCount
+        if (override > 0) return override.coerceIn(1, 6)
+
+        return when (spanCountForWidth(resources)) {
+            4 -> 6
+            3 -> 4
+            else -> 2
+        }
     }
 
     override fun requestFocusFirstItemFromTabSwitch(): Boolean {
@@ -157,16 +175,19 @@ class MyBangumiFollowFragment : Fragment(), MyTabSwitchFocusTarget {
             return true
         }
 
-        binding.recycler.post {
-            val vh = binding.recycler.findViewHolderForAdapterPosition(0)
+        val recycler = binding.recycler
+        recycler.post outerPost@{
+            if (_binding == null) return@outerPost
+            val vh = recycler.findViewHolderForAdapterPosition(0)
             if (vh != null) {
                 vh.itemView.requestFocus()
                 pendingFocusFirstItemFromTabSwitch = false
-                return@post
+                return@outerPost
             }
-            binding.recycler.scrollToPosition(0)
-            binding.recycler.post {
-                binding.recycler.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() ?: binding.recycler.requestFocus()
+            recycler.scrollToPosition(0)
+            recycler.post innerPost@{
+                if (_binding == null) return@innerPost
+                recycler.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() ?: recycler.requestFocus()
                 pendingFocusFirstItemFromTabSwitch = false
             }
         }
@@ -213,15 +234,15 @@ class MyBangumiFollowFragment : Fragment(), MyTabSwitchFocusTarget {
                     return@launch
                 }
                 if (isRefresh) adapter.submit(res.items) else adapter.append(res.items)
-                binding.recycler.post { maybeConsumePendingFocusFirstItemFromTabSwitch() }
+                _binding?.recycler?.post { maybeConsumePendingFocusFirstItemFromTabSwitch() }
                 restoreFocusIfNeeded()
                 page++
                 if (res.pages > 0 && page > res.pages) endReached = true
             } catch (t: Throwable) {
                 AppLog.e("MyBangumi", "load failed type=$type", t)
-                Toast.makeText(requireContext(), "加载失败，可查看 Logcat(标签 BLBL)", Toast.LENGTH_SHORT).show()
+                context?.let { Toast.makeText(it, "加载失败，可查看 Logcat(标签 BLBL)", Toast.LENGTH_SHORT).show() }
             } finally {
-                if (token == requestToken) binding.swipeRefresh.isRefreshing = false
+                if (token == requestToken) _binding?.swipeRefresh?.isRefreshing = false
                 isLoadingMore = false
             }
         }
@@ -231,10 +252,13 @@ class MyBangumiFollowFragment : Fragment(), MyTabSwitchFocusTarget {
         val pos = pendingRestorePosition ?: return
         if (_binding == null) return
         if (pos < 0 || pos >= adapter.itemCount) return
-        binding.recycler.post {
-            binding.recycler.scrollToPosition(pos)
-            binding.recycler.post {
-                binding.recycler.findViewHolderForAdapterPosition(pos)?.itemView?.requestFocus()
+        val recycler = binding.recycler
+        recycler.post outerPost@{
+            if (_binding == null) return@outerPost
+            recycler.scrollToPosition(pos)
+            recycler.post innerPost@{
+                if (_binding == null) return@innerPost
+                recycler.findViewHolderForAdapterPosition(pos)?.itemView?.requestFocus()
                 pendingRestorePosition = null
             }
         }

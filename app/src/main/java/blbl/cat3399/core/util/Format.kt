@@ -43,4 +43,41 @@ object Format {
             sdf.format(Date(whenMs))
         }
     }
+
+    fun pubDateText(epochSec: Long, nowMs: Long = System.currentTimeMillis()): String {
+        if (epochSec <= 0) return ""
+        val whenMs = epochSec * 1000
+        val diffMs = nowMs - whenMs
+        if (diffMs < 0) {
+            val sdf = SimpleDateFormat("yyyy.M.d", Locale.CHINA)
+            return sdf.format(Date(whenMs))
+        }
+
+        val minuteMs = 60_000L
+        val hourMs = 3_600_000L
+        val dayMs = 86_400_000L
+
+        return when {
+            diffMs < minuteMs -> {
+                val sec = maxOf(1, diffMs / 1000)
+                "${sec}秒前"
+            }
+            diffMs < hourMs -> {
+                val min = maxOf(1, diffMs / minuteMs)
+                "${min}分钟前"
+            }
+            diffMs < dayMs -> {
+                val hour = maxOf(1, diffMs / hourMs)
+                "${hour}小时前"
+            }
+            diffMs < 3 * dayMs -> {
+                val day = maxOf(1, diffMs / dayMs)
+                "${day}天前"
+            }
+            else -> {
+                val sdf = SimpleDateFormat("yyyy.M.d", Locale.CHINA)
+                sdf.format(Date(whenMs))
+            }
+        }
+    }
 }

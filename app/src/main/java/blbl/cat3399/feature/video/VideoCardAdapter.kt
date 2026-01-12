@@ -2,6 +2,7 @@ package blbl.cat3399.feature.video
 
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.core.image.ImageLoader
 import blbl.cat3399.core.image.ImageUrl
@@ -48,6 +49,9 @@ class VideoCardAdapter(
             binding.tvSubtitle.text =
                 item.pubDateText
                     ?: if (item.ownerName.isBlank()) "" else "UP ${item.ownerName}"
+            val pubDateText = item.pubDate?.let { Format.pubDateText(it) }.orEmpty()
+            binding.tvPubdate.text = pubDateText
+            binding.tvPubdate.isVisible = pubDateText.isNotBlank()
             binding.tvDuration.text = Format.duration(item.durationSec)
             binding.tvView.text = Format.count(item.view)
             binding.tvDanmaku.text = Format.count(item.danmaku)

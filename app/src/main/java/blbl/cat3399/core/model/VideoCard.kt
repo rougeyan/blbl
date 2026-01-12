@@ -10,6 +10,6 @@ data class VideoCard(
     val ownerFace: String?,
     val view: Long?,
     val danmaku: Long?,
+    val pubDate: Long?,
     val pubDateText: String?,
 )
-

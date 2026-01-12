@@ -103,6 +103,7 @@ object BiliApi {
     data class LiveDanmuHost(
         val host: String,
         val wssPort: Int,
+        val wsPort: Int,
     )
 
     suspend fun nav(): JSONObject {
@@ -429,10 +430,11 @@ object BiliApi {
                     val obj = hostList.optJSONObject(i) ?: continue
                     val host = obj.optString("host", "").trim()
                     val wssPort = obj.optInt("wss_port", 0)
-                    if (host.isBlank() || wssPort <= 0) continue
-                    add(LiveDanmuHost(host = host, wssPort = wssPort))
+                    val wsPort = obj.optInt("ws_port", 0)
+                    if (host.isBlank() || (wssPort <= 0 && wsPort <= 0)) continue
+                    add(LiveDanmuHost(host = host, wssPort = wssPort, wsPort = wsPort))
                 }
-            }.distinctBy { "${it.host}:${it.wssPort}" }
+            }.distinctBy { "${it.host}:${it.wssPort}:${it.wsPort}" }
         return LiveDanmuInfo(token = token, hosts = hosts)
     }
 
@@ -595,6 +597,7 @@ object BiliApi {
                             ownerFace = it.optString("author_face").takeIf { s -> s.isNotBlank() },
                             view = null,
                             danmaku = null,
+                            pubDate = null,
                             pubDateText = viewAtSec?.let { v -> Format.timeText(v) },
                         ),
                     )
@@ -724,6 +727,7 @@ object BiliApi {
                             ownerFace = upper.optString("face").takeIf { it.isNotBlank() },
                             view = cnt.optLong("play").takeIf { it > 0 },
                             danmaku = cnt.optLong("danmaku").takeIf { it > 0 },
+                            pubDate = obj.optLong("pubdate").takeIf { it > 0 },
                             pubDateText = favTime?.let { "收藏于：${Format.timeText(it)}" },
                         ),
                     )
@@ -1091,6 +1095,7 @@ object BiliApi {
                     ownerFace = owner.optString("face").takeIf { it.isNotBlank() },
                     view = stat.optLong("view").takeIf { it > 0 } ?: stat.optLong("play").takeIf { it > 0 },
                     danmaku = stat.optLong("danmaku").takeIf { it > 0 } ?: stat.optLong("dm").takeIf { it > 0 },
+                    pubDate = obj.optLong("pubdate").takeIf { it > 0 },
                     pubDateText = null,
                 ),
             )
@@ -1116,6 +1121,7 @@ object BiliApi {
                     ownerFace = null,
                     view = obj.optLong("play").takeIf { it > 0 },
                     danmaku = obj.optLong("video_review").takeIf { it > 0 },
+                    pubDate = obj.optLong("pubdate").takeIf { it > 0 },
                     pubDateText = null,
                 ),
             )
@@ -1218,9 +1224,11 @@ object BiliApi {
                 val bvid = archive.optString("bvid", "")
                 if (bvid.isBlank()) continue
 
-                val ownerName = modules.optJSONObject("module_author")?.optString("name", "") ?: ""
-                val ownerFace = modules.optJSONObject("module_author")?.optString("face")?.takeIf { it.isNotBlank() }
+                val author = modules.optJSONObject("module_author")
+                val ownerName = author?.optString("name", "") ?: ""
+                val ownerFace = author?.optString("face")?.takeIf { it.isNotBlank() }
                 val stat = archive.optJSONObject("stat") ?: JSONObject()
+                val pubDate = archive.optLong("pubdate").takeIf { it > 0 } ?: author?.optLong("pub_ts")?.takeIf { it > 0 }
                 cards.add(
                     VideoCard(
                         bvid = bvid,
@@ -1232,6 +1240,7 @@ object BiliApi {
                         ownerFace = ownerFace,
                         view = parseCountText(stat.optString("play", "")),
                         danmaku = parseCountText(stat.optString("danmaku", "")),
+                        pubDate = pubDate,
                         pubDateText = null,
                     ),
                 )
@@ -1264,9 +1273,11 @@ object BiliApi {
                 val bvid = archive.optString("bvid", "")
                 if (bvid.isBlank()) continue
 
-                val ownerName = modules.optJSONObject("module_author")?.optString("name", "") ?: ""
-                val ownerFace = modules.optJSONObject("module_author")?.optString("face")?.takeIf { it.isNotBlank() }
+                val author = modules.optJSONObject("module_author")
+                val ownerName = author?.optString("name", "") ?: ""
+                val ownerFace = author?.optString("face")?.takeIf { it.isNotBlank() }
                 val stat = archive.optJSONObject("stat") ?: JSONObject()
+                val pubDate = archive.optLong("pubdate").takeIf { it > 0 } ?: author?.optLong("pub_ts")?.takeIf { it > 0 }
                 cards.add(
                     VideoCard(
                         bvid = bvid,
@@ -1278,6 +1289,7 @@ object BiliApi {
                         ownerFace = ownerFace,
                         view = parseCountText(stat.optString("play", "")),
                         danmaku = parseCountText(stat.optString("danmaku", "")),
+                        pubDate = pubDate,
                         pubDateText = null,
                     ),
                 )

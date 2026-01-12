@@ -15,6 +15,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import blbl.cat3399.BuildConfig
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.tv.TvMode
@@ -214,7 +215,7 @@ class SettingsActivity : AppCompatActivity() {
             )
 
             "关于应用" -> listOf(
-                SettingEntry("版本", "0.1.0", null),
+                SettingEntry("版本", BuildConfig.VERSION_NAME, null),
                 SettingEntry("日志标签", "BLBL", "用于 Logcat 过滤"),
                 SettingEntry("更新测试版本", "点击更新", "从内置直链下载 APK 并安装（限速）"),
             )

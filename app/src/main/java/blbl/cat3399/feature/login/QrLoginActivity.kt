@@ -169,7 +169,7 @@ class QrLoginActivity : AppCompatActivity() {
                     when (code) {
                         86101 -> binding.tvStatus.text = "等待扫码..."
                         86090 -> binding.tvStatus.text = "已扫码，请在手机端确认"
-                        86039 -> binding.tvStatus.text = "已扫码，等待确认..."
+                        86039 -> binding.tvStatus.text = "等待扫码..."
                         86038 -> {
                             binding.tvStatus.text = "二维码已失效，请刷新"
                             return@launch

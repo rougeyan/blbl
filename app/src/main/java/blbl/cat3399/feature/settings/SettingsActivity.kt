@@ -13,6 +13,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.doOnPreDraw
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -46,6 +47,7 @@ class SettingsActivity : AppCompatActivity() {
     private var pendingRestoreRightTitle: String? = null
     private var pendingRestoreLeftIndex: Int? = null
     private var pendingRestoreBack: Boolean = false
+    private var focusRequestToken: Int = 0
 
     private val gaiaVgateLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -246,7 +248,9 @@ class SettingsActivity : AppCompatActivity() {
         }
         rightAdapter.submit(entries)
         pendingRestoreRightTitle = focusTitle
-        binding.recyclerRight.post {
+        val token = ++focusRequestToken
+        binding.recyclerRight.doOnPreDraw {
+            if (token != focusRequestToken) return@doOnPreDraw
             if (keepScroll && lm != null && firstVisible != RecyclerView.NO_POSITION) {
                 lm.scrollToPositionWithOffset(firstVisible, topOffset)
             }
@@ -674,36 +678,38 @@ class SettingsActivity : AppCompatActivity() {
     private fun focusRightByTitle(title: String): Boolean {
         val pos = rightAdapter.indexOfTitle(title)
         if (pos == RecyclerView.NO_POSITION) return false
+        val holder = binding.recyclerRight.findViewHolderForAdapterPosition(pos)
+        if (holder?.itemView?.requestFocus() == true) return true
         return focusRightAt(pos)
     }
 
     private fun focusRightAt(position: Int): Boolean {
         if (position < 0 || position >= rightAdapter.itemCount) return false
-        binding.recyclerRight.post {
-            val layoutManager = binding.recyclerRight.layoutManager as? LinearLayoutManager
-            if (layoutManager != null) {
-                val first = layoutManager.findFirstVisibleItemPosition()
-                val last = layoutManager.findLastVisibleItemPosition()
-                if (position < first || position > last) {
-                    layoutManager.scrollToPositionWithOffset(position, 0)
-                }
+        val token = ++focusRequestToken
+        val layoutManager = binding.recyclerRight.layoutManager as? LinearLayoutManager
+        if (layoutManager != null) {
+            val first = layoutManager.findFirstVisibleItemPosition()
+            val last = layoutManager.findLastVisibleItemPosition()
+            if (position < first || position > last) {
+                layoutManager.scrollToPositionWithOffset(position, 0)
             }
-            binding.recyclerRight.post {
-                binding.recyclerRight.findViewHolderForAdapterPosition(position)?.itemView?.requestFocus()
-                    ?: binding.recyclerRight.requestFocus()
-            }
+        }
+        binding.recyclerRight.doOnPreDraw {
+            if (token != focusRequestToken) return@doOnPreDraw
+            binding.recyclerRight.findViewHolderForAdapterPosition(position)?.itemView?.requestFocus()
         }
         return true
     }
 
     private fun focusLeftAt(position: Int): Boolean {
         if (position < 0 || position >= leftAdapter.itemCount) return false
-        binding.recyclerLeft.post {
+        val token = ++focusRequestToken
+        val holder = binding.recyclerLeft.findViewHolderForAdapterPosition(position)
+        if (holder?.itemView?.requestFocus() == true) return true
+        binding.recyclerLeft.scrollToPosition(position)
+        binding.recyclerLeft.doOnPreDraw {
+            if (token != focusRequestToken) return@doOnPreDraw
             binding.recyclerLeft.findViewHolderForAdapterPosition(position)?.itemView?.requestFocus()
-                ?: run {
-                    binding.recyclerLeft.scrollToPosition(position)
-                    binding.recyclerLeft.post { binding.recyclerLeft.findViewHolderForAdapterPosition(position)?.itemView?.requestFocus() }
-                }
         }
         return true
     }

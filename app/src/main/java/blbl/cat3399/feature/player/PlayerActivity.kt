@@ -1099,6 +1099,15 @@ class PlayerActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_GUIDE,
             -> {
                 if (binding.settingsPanel.visibility == View.VISIBLE) return true
+                if (
+                    !controlsVisible &&
+                    (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_SETTINGS)
+                ) {
+                    binding.settingsPanel.visibility = View.VISIBLE
+                    setControlsVisible(true)
+                    focusSettingsPanel()
+                    return true
+                }
                 setControlsVisible(true)
                 focusFirstControl()
                 return true
@@ -1151,11 +1160,13 @@ class PlayerActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_NUMPAD_ENTER,
             -> {
                 if (binding.settingsPanel.visibility != View.VISIBLE && !hasControlsFocus()) {
+                    if (!controlsVisible) player?.pause()
                     setControlsVisible(true)
                     focusFirstControl()
                     return true
                 }
                 if (!controlsVisible && binding.settingsPanel.visibility != View.VISIBLE) {
+                    player?.pause()
                     setControlsVisible(true)
                     focusFirstControl()
                     return true
@@ -1252,14 +1263,17 @@ class PlayerActivity : AppCompatActivity() {
 
                     override fun onDoubleTap(e: MotionEvent): Boolean {
                         if (binding.settingsPanel.visibility == View.VISIBLE) return true
+                        val w = binding.playerView.width.toFloat()
+                        if (w <= 0f) return true
+                        val dir = edgeDirection(e.x, w)
+                        if (dir == 0) {
+                            binding.btnPlayPause.performClick()
+                            return true
+                        }
                         if (controlsVisible) {
                             setControlsVisible(false)
                             return true
                         }
-                        val w = binding.playerView.width.toFloat()
-                        if (w <= 0f) return true
-                        val dir = edgeDirection(e.x, w)
-                        if (dir == 0) return true
 
                         smartSeek(direction = dir, showControls = false, hintKind = SeekHintKind.Step)
                         tapSeekActiveDirection = dir
@@ -1704,6 +1718,22 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun focusSeekBar() {
         binding.seekProgress.post { binding.seekProgress.requestFocus() }
+    }
+
+    private fun focusSettingsPanel() {
+        binding.recyclerSettings.post {
+            val child = binding.recyclerSettings.getChildAt(0)
+            if (child != null) {
+                child.requestFocus()
+                return@post
+            }
+
+            binding.recyclerSettings.scrollToPosition(0)
+            binding.recyclerSettings.post {
+                val first = binding.recyclerSettings.getChildAt(0)
+                (first ?: binding.recyclerSettings).requestFocus()
+            }
+        }
     }
 
     private fun shouldFinishOnBackPress(): Boolean {
@@ -3943,7 +3973,7 @@ class PlayerActivity : AppCompatActivity() {
         private const val ACTIVITY_STACK_MAX_DEPTH: Int = 3
         private const val SEEK_MAX = 10_000
         private const val AUTO_HIDE_MS = 4_000L
-        private const val EDGE_TAP_THRESHOLD = 0.28f
+        private const val EDGE_TAP_THRESHOLD = 0.4f
         private const val TAP_SEEK_ACTIVE_MS = 1_200L
         private const val SMART_SEEK_WINDOW_MS = 900L
         private const val HOLD_SPEED = 2.0f

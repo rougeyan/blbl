@@ -138,6 +138,7 @@ class PlayerActivity : AppCompatActivity() {
     private var playlistItems: List<PlayerPlaylistItem> = emptyList()
     private var playlistIndex: Int = -1
     private lateinit var session: PlayerSessionSettings
+    private var subtitleAvailabilityKnown: Boolean = false
     private var subtitleAvailable: Boolean = false
     private var subtitleConfig: MediaItem.SubtitleConfiguration? = null
     private var subtitleItems: List<SubtitleItem> = emptyList()
@@ -643,6 +644,7 @@ class PlayerActivity : AppCompatActivity() {
         debugRenderFpsLastAtMs = null
         debugRenderedFramesLastCount = null
         debugRenderedFramesLastAtMs = null
+        subtitleAvailabilityKnown = false
         subtitleAvailable = false
         subtitleConfig = null
         subtitleItems = emptyList()
@@ -802,6 +804,7 @@ class PlayerActivity : AppCompatActivity() {
                     trace?.log("subtitle:await")
                     subtitleConfig = subJob.await()
                     trace?.log("subtitle:awaitDone", "ok=${subtitleConfig != null}")
+                    subtitleAvailabilityKnown = true
                     subtitleAvailable = subtitleConfig != null
                     (binding.recyclerSettings.adapter as? PlayerSettingsAdapter)?.let { refreshSettings(it) }
                     applySubtitleEnabled(exo)
@@ -2347,16 +2350,37 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun updateSubtitleButton() {
+        if (!subtitleAvailabilityKnown) {
+            binding.btnSubtitle.isEnabled = true
+            binding.btnSubtitle.alpha = 1.0f
+            binding.btnSubtitle.imageTintList =
+                ContextCompat.getColorStateList(this, blbl.cat3399.R.color.player_button_tint)
+            return
+        }
+        if (!subtitleAvailable) {
+            binding.btnSubtitle.isEnabled = false
+            binding.btnSubtitle.alpha = 0.35f
+            binding.btnSubtitle.imageTintList =
+                ContextCompat.getColorStateList(this, blbl.cat3399.R.color.player_button_tint)
+            return
+        }
+
+        binding.btnSubtitle.isEnabled = true
+        binding.btnSubtitle.alpha = 1.0f
         val colorRes =
-            if (!subtitleAvailable) {
-                blbl.cat3399.R.color.blbl_text_secondary
+            if (session.subtitleEnabled) {
+                blbl.cat3399.R.color.blbl_blue
             } else {
-                if (session.subtitleEnabled) blbl.cat3399.R.color.blbl_blue else blbl.cat3399.R.color.blbl_text_secondary
+                blbl.cat3399.R.color.player_button_tint
             }
         binding.btnSubtitle.imageTintList = ContextCompat.getColorStateList(this, colorRes)
     }
 
     private fun toggleSubtitles(exo: ExoPlayer) {
+        if (!subtitleAvailabilityKnown) {
+            Toast.makeText(this, "字幕信息加载中", Toast.LENGTH_SHORT).show()
+            return
+        }
         if (!subtitleAvailable) {
             Toast.makeText(this, "该视频暂无字幕", Toast.LENGTH_SHORT).show()
             return
@@ -3235,6 +3259,7 @@ class PlayerActivity : AppCompatActivity() {
                 }
             lifecycleScope.launch {
                 subtitleConfig = buildSubtitleConfigFromCurrentSelection(bvid = currentBvid, cid = currentCid)
+                subtitleAvailabilityKnown = true
                 subtitleAvailable = subtitleConfig != null
                 applySubtitleEnabled(exo)
                 refreshSettings(binding.recyclerSettings.adapter as PlayerSettingsAdapter)
@@ -3813,13 +3838,23 @@ class PlayerActivity : AppCompatActivity() {
         }
 
         (binding.seekProgress.layoutParams as? MarginLayoutParams)?.let { lp ->
-            val height = scaledPx(if (tvMode) R.dimen.player_seekbar_height_tv else R.dimen.player_seekbar_height).coerceAtLeast(1)
+            val height = scaledPx(if (tvMode) R.dimen.player_seekbar_touch_height_tv else R.dimen.player_seekbar_touch_height).coerceAtLeast(1)
             val mb = scaledPx(if (tvMode) R.dimen.player_seekbar_margin_bottom_tv else R.dimen.player_seekbar_margin_bottom)
             if (lp.height != height || lp.bottomMargin != mb) {
                 lp.height = height
                 lp.bottomMargin = mb
                 binding.seekProgress.layoutParams = lp
             }
+        }
+        run {
+            val drawableRes =
+                if (tvMode) R.drawable.seekbar_player_progress_tv else R.drawable.seekbar_player_progress
+            binding.seekProgress.progressDrawable = ContextCompat.getDrawable(this, drawableRes)
+            val trackHeight =
+                scaledPx(
+                    if (tvMode) R.dimen.player_seekbar_track_height_tv else R.dimen.player_seekbar_track_height,
+                ).coerceAtLeast(1)
+            binding.seekProgress.setTrackHeightPx(trackHeight)
         }
 
         (binding.progressPersistentBottom.layoutParams as? MarginLayoutParams)?.let { lp ->
@@ -3831,6 +3866,11 @@ class PlayerActivity : AppCompatActivity() {
                 lp.height = height
                 binding.progressPersistentBottom.layoutParams = lp
             }
+        }
+        run {
+            val drawableRes =
+                if (tvMode) R.drawable.progress_player_persistent_tv else R.drawable.progress_player_persistent
+            binding.progressPersistentBottom.progressDrawable = ContextCompat.getDrawable(this, drawableRes)
         }
 
         (binding.controlsRow.layoutParams as? MarginLayoutParams)?.let { lp ->

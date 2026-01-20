@@ -29,7 +29,7 @@
         android:id="@+id/top_bar"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:background="@color/player_overlay_bg"
+        android:background="@drawable/bg_player_top_scrim"
         android:paddingHorizontal="@dimen/player_top_bar_padding_h"
         android:paddingVertical="@dimen/player_top_bar_padding_v"
         android:visibility="gone"
@@ -46,7 +46,7 @@
             android:padding="@dimen/player_top_button_padding"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_back"
-            android:tint="@color/blbl_text"
+            android:tint="@color/player_button_tint"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
@@ -104,7 +104,7 @@
             android:padding="@dimen/player_top_button_padding"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_settings"
-            android:tint="@color/blbl_text"
+            android:tint="@color/player_button_tint"
             android:visibility="gone"
             app:layout_constraintBottom_toBottomOf="@id/btn_back"
             app:layout_constraintEnd_toEndOf="parent"
@@ -126,7 +126,8 @@
         <blbl.cat3399.feature.player.SegmentedSeekBar
             android:id="@+id/seek_progress"
             android:layout_width="0dp"
-            android:layout_height="@dimen/player_seekbar_height"
+            android:layout_height="@dimen/player_seekbar_touch_height"
+            android:background="@drawable/blbl_focus_bg_round"
             android:layout_marginHorizontal="0dp"
             android:layout_marginBottom="@dimen/player_seekbar_margin_bottom"
             android:paddingHorizontal="0dp"
@@ -158,11 +159,11 @@
                 android:layout_marginEnd="?attr/playerOsdGap"
                 android:background="@drawable/blbl_focus_bg_round"
                 android:contentDescription="@string/app_name"
-                android:focusable="true"
-                android:padding="?attr/playerOsdPadTransport"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_player_prev"
-                android:tint="@color/blbl_text" />
+            android:focusable="true"
+            android:padding="?attr/playerOsdPadTransport"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_player_prev"
+            android:tint="@color/player_button_tint" />
 
             <ImageButton
                 android:id="@+id/btn_play_pause"
@@ -171,11 +172,11 @@
                 android:layout_marginEnd="?attr/playerOsdGap"
                 android:background="@drawable/blbl_focus_bg_round"
                 android:contentDescription="@string/app_name"
-                android:focusable="true"
-                android:padding="?attr/playerOsdPadTransport"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_player_play"
-                android:tint="@color/blbl_text" />
+            android:focusable="true"
+            android:padding="?attr/playerOsdPadTransport"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_player_play"
+            android:tint="@color/player_button_tint" />
 
             <ImageButton
                 android:id="@+id/btn_next"
@@ -184,11 +185,11 @@
                 android:layout_marginEnd="?attr/playerOsdGap"
                 android:background="@drawable/blbl_focus_bg_round"
                 android:contentDescription="@string/app_name"
-                android:focusable="true"
-                android:padding="?attr/playerOsdPadTransport"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_player_next"
-                android:tint="@color/blbl_text" />
+            android:focusable="true"
+            android:padding="?attr/playerOsdPadTransport"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_player_next"
+            android:tint="@color/player_button_tint" />
 
             <ImageButton
                 android:id="@+id/btn_subtitle"
@@ -197,11 +198,11 @@
                 android:layout_marginEnd="?attr/playerOsdGap"
                 android:background="@drawable/blbl_focus_bg_round"
                 android:focusable="true"
-                android:padding="?attr/playerOsdPadNormal"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_player_subtitle"
-                android:tint="@color/blbl_text_secondary"
-                android:contentDescription="@string/player_btn_subtitle" />
+            android:padding="?attr/playerOsdPadNormal"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_player_subtitle"
+            android:tint="@color/player_button_tint"
+            android:contentDescription="@string/player_btn_subtitle" />
 
             <ImageButton
                 android:id="@+id/btn_danmaku"
@@ -225,9 +226,9 @@
                 android:contentDescription="@string/app_name"
                 android:focusable="true"
                 android:padding="?attr/playerOsdPadNormal"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_player_up"
-                android:tint="@color/blbl_text" />
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_player_up"
+            android:tint="@color/player_button_tint" />
 
             <ImageButton
                 android:id="@+id/btn_like"
@@ -237,11 +238,11 @@
                 android:background="@drawable/blbl_focus_bg_round"
                 android:contentDescription="@string/app_name"
                 android:focusable="true"
-                android:padding="?attr/playerOsdPadSmall"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_action_like"
-                android:tint="@color/blbl_text"
-                android:visibility="gone" />
+            android:padding="?attr/playerOsdPadSmall"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_action_like"
+            android:tint="@color/player_button_tint"
+            android:visibility="gone" />
 
             <ImageButton
                 android:id="@+id/btn_coin"
@@ -251,11 +252,11 @@
                 android:background="@drawable/blbl_focus_bg_round"
                 android:contentDescription="@string/app_name"
                 android:focusable="true"
-                android:padding="?attr/playerOsdPadSmall"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_action_coin"
-                android:tint="@color/blbl_text"
-                android:visibility="gone" />
+            android:padding="?attr/playerOsdPadSmall"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_action_coin"
+            android:tint="@color/player_button_tint"
+            android:visibility="gone" />
 
             <ImageButton
                 android:id="@+id/btn_fav"
@@ -265,11 +266,11 @@
                 android:background="@drawable/blbl_focus_bg_round"
                 android:contentDescription="@string/app_name"
                 android:focusable="true"
-                android:padding="?attr/playerOsdPadSmall"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_action_fav"
-                android:tint="@color/blbl_text"
-                android:visibility="gone" />
+            android:padding="?attr/playerOsdPadSmall"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_action_fav"
+            android:tint="@color/player_button_tint"
+            android:visibility="gone" />
 
             <ImageButton
                 android:id="@+id/btn_advanced"
@@ -278,10 +279,10 @@
                 android:background="@drawable/blbl_focus_bg_round"
                 android:contentDescription="@string/app_name"
                 android:focusable="true"
-                android:padding="?attr/playerOsdPadSmall"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_settings"
-                android:tint="@color/blbl_text" />
+            android:padding="?attr/playerOsdPadSmall"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_settings"
+            android:tint="@color/player_button_tint" />
         </LinearLayout>
 
         <TextView

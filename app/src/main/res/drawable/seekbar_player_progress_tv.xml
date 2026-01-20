@@ -2,16 +2,16 @@
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:id="@android:id/background">
         <shape android:shape="rectangle">
-            <size android:height="@dimen/player_seekbar_track_height" />
-            <corners android:radius="@dimen/player_seekbar_corner_radius" />
+            <size android:height="@dimen/player_seekbar_track_height_tv" />
+            <corners android:radius="@dimen/player_seekbar_corner_radius_tv" />
             <solid android:color="#55FFFFFF" />
         </shape>
     </item>
     <item android:id="@android:id/secondaryProgress">
         <clip>
             <shape android:shape="rectangle">
-                <size android:height="@dimen/player_seekbar_track_height" />
-                <corners android:radius="@dimen/player_seekbar_corner_radius" />
+                <size android:height="@dimen/player_seekbar_track_height_tv" />
+                <corners android:radius="@dimen/player_seekbar_corner_radius_tv" />
                 <solid android:color="#70FFFFFF" />
             </shape>
         </clip>
@@ -19,8 +19,8 @@
     <item android:id="@android:id/progress">
         <clip>
             <shape android:shape="rectangle">
-                <size android:height="@dimen/player_seekbar_track_height" />
-                <corners android:radius="@dimen/player_seekbar_corner_radius" />
+                <size android:height="@dimen/player_seekbar_track_height_tv" />
+                <corners android:radius="@dimen/player_seekbar_corner_radius_tv" />
                 <solid android:color="#FFFFFFFF" />
             </shape>
         </clip>

@@ -227,7 +227,9 @@ class LivePlayerActivity : AppCompatActivity() {
 
         (binding.seekProgress.layoutParams as? MarginLayoutParams)?.let { lp ->
             val height =
-                scaledPx(if (tvMode) blbl.cat3399.R.dimen.player_seekbar_height_tv else blbl.cat3399.R.dimen.player_seekbar_height).coerceAtLeast(1)
+                scaledPx(
+                    if (tvMode) blbl.cat3399.R.dimen.player_seekbar_touch_height_tv else blbl.cat3399.R.dimen.player_seekbar_touch_height,
+                ).coerceAtLeast(1)
             val mb =
                 scaledPx(if (tvMode) blbl.cat3399.R.dimen.player_seekbar_margin_bottom_tv else blbl.cat3399.R.dimen.player_seekbar_margin_bottom)
             if (lp.height != height || lp.bottomMargin != mb) {
@@ -235,6 +237,16 @@ class LivePlayerActivity : AppCompatActivity() {
                 lp.bottomMargin = mb
                 binding.seekProgress.layoutParams = lp
             }
+        }
+        run {
+            val drawableRes =
+                if (tvMode) blbl.cat3399.R.drawable.seekbar_player_progress_tv else blbl.cat3399.R.drawable.seekbar_player_progress
+            binding.seekProgress.progressDrawable = ContextCompat.getDrawable(this, drawableRes)
+            val trackHeight =
+                scaledPx(
+                    if (tvMode) blbl.cat3399.R.dimen.player_seekbar_track_height_tv else blbl.cat3399.R.dimen.player_seekbar_track_height,
+                ).coerceAtLeast(1)
+            binding.seekProgress.setTrackHeightPx(trackHeight)
         }
 
         (binding.controlsRow.layoutParams as? MarginLayoutParams)?.let { lp ->

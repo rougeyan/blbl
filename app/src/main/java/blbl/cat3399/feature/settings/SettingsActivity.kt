@@ -236,52 +236,52 @@ class SettingsActivity : AppCompatActivity() {
         val prefs = BiliClient.prefs
         val entries = when (sections.getOrNull(index)) {
             "通用设置" -> listOf(
-                SettingEntry("图片质量", prefs.imageQuality, "影响封面/头像 URL 追加参数"),
-                SettingEntry("User-Agent", prefs.userAgent.take(60), "点击可编辑/重置（影响 CDN/接口风控）"),
+                SettingEntry("图片质量", prefs.imageQuality, null),
+                SettingEntry("User-Agent", prefs.userAgent.take(60), null),
                 SettingEntry("风控验证", gaiaVgateStatusText(), "播放被拦截后可在此手动完成人机验证"),
                 SettingEntry("清理缓存", cacheSizeText(), null),
-                SettingEntry("清除登录", if (BiliClient.cookies.hasSessData()) "已登录" else "未登录", "清除 Cookie（SESSDATA 等）"),
+                SettingEntry("清除登录", if (BiliClient.cookies.hasSessData()) "已登录" else "未登录", null),
             )
 
             "页面设置" -> listOf(
-                SettingEntry("每行卡片数量", gridSpanText(prefs.gridSpanCount), "影响推荐/热门/分类（动态单独设置）"),
-                SettingEntry("动态页每行卡片数量", gridSpanText(prefs.dynamicGridSpanCount), "默认 3"),
-                SettingEntry("界面大小", sidebarSizeText(prefs.sidebarSize), "统一调整视频卡片/侧边栏/播放器（TV 以 1080P x1.50 为基准）"),
-                SettingEntry("TV 模式", tvModeText(prefs.uiMode), "优化遥控器/键盘导航与焦点样式"),
-                SettingEntry("以全屏模式运行", if (prefs.fullscreenEnabled) "开" else "关", "隐藏状态栏/导航栏"),
+                SettingEntry("每行卡片数量", gridSpanText(prefs.gridSpanCount), null),
+                SettingEntry("动态页每行卡片数量", gridSpanText(prefs.dynamicGridSpanCount), null),
+                SettingEntry("界面大小", sidebarSizeText(prefs.sidebarSize), null),
+                SettingEntry("TV 模式", tvModeText(prefs.uiMode), null),
+                SettingEntry("以全屏模式运行", if (prefs.fullscreenEnabled) "开" else "关", null),
             )
 
             "播放设置" -> listOf(
-                SettingEntry("默认画质", qnText(prefs.playerPreferredQn), "按 B 站 qn 清晰度选择（DASH 走轨道 id）"),
-                SettingEntry("默认音轨", audioText(prefs.playerPreferredAudioId), "30280/30232/30216/30250/30251"),
-                SettingEntry("CDN线路", cdnText(prefs.playerCdnPreference), "优先选择匹配域名的播放 URL（匹配失败回退）"),
+                SettingEntry("默认画质", qnText(prefs.playerPreferredQn), null),
+                SettingEntry("默认音轨", audioText(prefs.playerPreferredAudioId), null),
+                SettingEntry("CDN线路", cdnText(prefs.playerCdnPreference), null),
                 SettingEntry("默认播放速度", String.format(Locale.US, "%.2fx", prefs.playerSpeed), null),
-                SettingEntry("自动跳到上次播放位置", if (prefs.playerAutoResumeEnabled) "开" else "关", "进入播放页后自动跳转，按返回取消"),
-                SettingEntry("自动跳过片段（空降助手）", if (prefs.playerAutoSkipSegmentsEnabled) "开" else "关", "SponsorBlock/片头片尾片段，按返回取消本次片段"),
-                SettingEntry("播放模式", playbackModeText(prefs.playerPlaybackMode), "播放结束后的动作（循环/下一条/退出）"),
-                SettingEntry("字幕语言", subtitleLangText(prefs.subtitlePreferredLang), "自动/优先匹配"),
-                SettingEntry("默认开启字幕", if (prefs.subtitleEnabledDefault) "开" else "关", "进入播放页时默认状态"),
-                SettingEntry("视频编码", prefs.playerPreferredCodec, "AVC/HEVC/AV1"),
-                SettingEntry("控制栏按钮", playerActionButtonsText(prefs.playerActionButtons), "选择显示点赞/投币/收藏"),
-                SettingEntry("显示视频调试信息", if (prefs.playerDebugEnabled) "开" else "关", "播放器左上角调试框"),
-                SettingEntry("播放结束双击返回", if (prefs.playerDoubleBackOnEnded) "开" else "关", "关=播放结束时按一次返回直接退出"),
-                SettingEntry("底部常驻进度条", if (prefs.playerPersistentBottomProgressEnabled) "开" else "关", "控制栏隐藏时在底部显示进度"),
+                SettingEntry("自动跳到上次播放位置", if (prefs.playerAutoResumeEnabled) "开" else "关", null),
+                SettingEntry("自动跳过片段（空降助手）", if (prefs.playerAutoSkipSegmentsEnabled) "开" else "关", null),
+                SettingEntry("播放模式", playbackModeText(prefs.playerPlaybackMode), null),
+                SettingEntry("字幕语言", subtitleLangText(prefs.subtitlePreferredLang), null),
+                SettingEntry("默认开启字幕", if (prefs.subtitleEnabledDefault) "开" else "关", null),
+                SettingEntry("视频编码", prefs.playerPreferredCodec, null),
+                SettingEntry("控制栏按钮", playerActionButtonsText(prefs.playerActionButtons), null),
+                SettingEntry("显示视频调试信息", if (prefs.playerDebugEnabled) "开" else "关", null),
+                SettingEntry("播放结束双击返回", if (prefs.playerDoubleBackOnEnded) "开" else "关", null),
+                SettingEntry("底部常驻进度条", if (prefs.playerPersistentBottomProgressEnabled) "开" else "关", null),
             )
 
             "弹幕设置" -> listOf(
                 SettingEntry("弹幕开关", if (prefs.danmakuEnabled) "开" else "关", null),
                 SettingEntry("弹幕透明度", String.format("%.2f", prefs.danmakuOpacity), null),
-                SettingEntry("弹幕字体大小", prefs.danmakuTextSizeSp.toInt().toString(), "sp"),
-                SettingEntry("弹幕占屏比", areaText(prefs.danmakuArea), "1/4、1/2、3/4、不限"),
-                SettingEntry("弹幕速度", prefs.danmakuSpeed.toString(), "1~10"),
-                SettingEntry("跟随B站弹幕屏蔽", if (prefs.danmakuFollowBiliShield) "开" else "关", "需要登录且 dm/web/view 可用"),
-                SettingEntry("智能云屏蔽", if (prefs.danmakuAiShieldEnabled) "开" else "关", "按弹幕 weight 过滤"),
-                SettingEntry("智能云屏蔽等级", aiLevelText(prefs.danmakuAiShieldLevel), "0=默认(3)，1~10 越大越严格"),
+                SettingEntry("弹幕字体大小", prefs.danmakuTextSizeSp.toInt().toString(), null),
+                SettingEntry("弹幕占屏比", areaText(prefs.danmakuArea), null),
+                SettingEntry("弹幕速度", prefs.danmakuSpeed.toString(), null),
+                SettingEntry("跟随B站弹幕屏蔽", if (prefs.danmakuFollowBiliShield) "开" else "关", null),
+                SettingEntry("智能云屏蔽", if (prefs.danmakuAiShieldEnabled) "开" else "关", null),
+                SettingEntry("智能云屏蔽等级", aiLevelText(prefs.danmakuAiShieldLevel), null),
                 SettingEntry("允许滚动弹幕", if (prefs.danmakuAllowScroll) "开" else "关", null),
                 SettingEntry("允许顶部悬停弹幕", if (prefs.danmakuAllowTop) "开" else "关", null),
                 SettingEntry("允许底部悬停弹幕", if (prefs.danmakuAllowBottom) "开" else "关", null),
-                SettingEntry("允许彩色弹幕", if (prefs.danmakuAllowColor) "开" else "关", "关=仅白色"),
-                SettingEntry("允许特殊弹幕", if (prefs.danmakuAllowSpecial) "开" else "关", "高级/代码等（当前仅做过滤）"),
+                SettingEntry("允许彩色弹幕", if (prefs.danmakuAllowColor) "开" else "关", null),
+                SettingEntry("允许特殊弹幕", if (prefs.danmakuAllowSpecial) "开" else "关", null),
             )
 
             "关于应用" -> listOf(

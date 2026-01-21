@@ -2,23 +2,25 @@ package blbl.cat3399.feature.player
 
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.databinding.ItemPlayerSettingBinding
 
 class PlayerSettingsAdapter(
     private val onClick: (SettingItem) -> Unit,
-) : RecyclerView.Adapter<PlayerSettingsAdapter.Vh>() {
+) : ListAdapter<PlayerSettingsAdapter.SettingItem, PlayerSettingsAdapter.Vh>(DIFF) {
     data class SettingItem(
         val title: String,
         val subtitle: String,
     )
 
-    private val items = ArrayList<SettingItem>()
+    init {
+        setHasStableIds(true)
+    }
 
     fun submit(list: List<SettingItem>) {
-        items.clear()
-        items.addAll(list)
-        notifyDataSetChanged()
+        submitList(list.toList())
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Vh {
@@ -26,9 +28,29 @@ class PlayerSettingsAdapter(
         return Vh(binding)
     }
 
-    override fun onBindViewHolder(holder: Vh, position: Int) = holder.bind(items[position], onClick)
+    override fun onBindViewHolder(holder: Vh, position: Int) = holder.bind(getItem(position), onClick)
 
-    override fun getItemCount(): Int = items.size
+    override fun getItemId(position: Int): Long {
+        return getItem(position).title.hashCode().toLong()
+    }
+
+    fun indexOfTitle(title: String): Int {
+        val index = currentList.indexOfFirst { it.title == title }
+        return if (index >= 0) index else RecyclerView.NO_POSITION
+    }
+
+    private companion object {
+        private val DIFF =
+            object : DiffUtil.ItemCallback<SettingItem>() {
+                override fun areItemsTheSame(oldItem: SettingItem, newItem: SettingItem): Boolean {
+                    return oldItem.title == newItem.title
+                }
+
+                override fun areContentsTheSame(oldItem: SettingItem, newItem: SettingItem): Boolean {
+                    return oldItem == newItem
+                }
+            }
+    }
 
     class Vh(private val binding: ItemPlayerSettingBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(item: SettingItem, onClick: (SettingItem) -> Unit) {
@@ -38,4 +60,3 @@ class PlayerSettingsAdapter(
         }
     }
 }
-

@@ -423,6 +423,38 @@ class PlayerActivity : AppCompatActivity() {
         }
         binding.recyclerSettings.adapter = settingsAdapter
         binding.recyclerSettings.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
+        binding.recyclerSettings.addOnChildAttachStateChangeListener(
+            object : androidx.recyclerview.widget.RecyclerView.OnChildAttachStateChangeListener {
+                override fun onChildViewAttachedToWindow(view: View) {
+                    view.setOnKeyListener { v, keyCode, event ->
+                        if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+                        val holder = binding.recyclerSettings.findContainingViewHolder(v) ?: return@setOnKeyListener false
+                        val pos =
+                            holder.bindingAdapterPosition.takeIf { it != androidx.recyclerview.widget.RecyclerView.NO_POSITION }
+                                ?: return@setOnKeyListener false
+
+                        when (keyCode) {
+                            KeyEvent.KEYCODE_DPAD_UP -> {
+                                if (pos == 0 && !binding.recyclerSettings.canScrollVertically(-1)) return@setOnKeyListener true
+                                false
+                            }
+
+                            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                val last = (binding.recyclerSettings.adapter?.itemCount ?: 0) - 1
+                                if (pos == last && !binding.recyclerSettings.canScrollVertically(1)) return@setOnKeyListener true
+                                false
+                            }
+
+                            else -> false
+                        }
+                    }
+                }
+
+                override fun onChildViewDetachedFromWindow(view: View) {
+                    view.setOnKeyListener(null)
+                }
+            },
+        )
         refreshSettings(settingsAdapter)
         updateDebugOverlay()
 
@@ -1121,7 +1153,7 @@ class PlayerActivity : AppCompatActivity() {
                 if (binding.settingsPanel.visibility == View.VISIBLE) {
                     binding.settingsPanel.visibility = View.GONE
                     setControlsVisible(true)
-                    focusFirstControl()
+                    focusAdvancedControl()
                     return true
                 }
                 if (controlsVisible) {
@@ -1319,6 +1351,11 @@ class PlayerActivity : AppCompatActivity() {
             val willShow = binding.settingsPanel.visibility != View.VISIBLE
             binding.settingsPanel.visibility = if (willShow) View.VISIBLE else View.GONE
             setControlsVisible(true)
+            if (willShow) {
+                focusSettingsPanel()
+            } else {
+                focusAdvancedControl()
+            }
         }
 
         binding.btnLike.setOnClickListener { onLikeButtonClicked() }
@@ -1718,6 +1755,10 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun focusSeekBar() {
         binding.seekProgress.post { binding.seekProgress.requestFocus() }
+    }
+
+    private fun focusAdvancedControl() {
+        binding.btnAdvanced.post { binding.btnAdvanced.requestFocus() }
     }
 
     private fun focusSettingsPanel() {

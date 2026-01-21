@@ -123,7 +123,11 @@ class LivePlayerActivity : AppCompatActivity() {
             val willShow = binding.settingsPanel.visibility != View.VISIBLE
             binding.settingsPanel.visibility = if (willShow) View.VISIBLE else View.GONE
             setControlsVisible(true)
-            if (willShow) binding.recyclerSettings.post { binding.recyclerSettings.requestFocus() }
+            if (willShow) {
+                focusSettingsPanel()
+            } else {
+                focusAdvancedControl()
+            }
         }
         binding.btnDanmaku.setOnClickListener {
             session = session.copy(danmaku = session.danmaku.copy(enabled = !session.danmaku.enabled))
@@ -389,7 +393,7 @@ class LivePlayerActivity : AppCompatActivity() {
             if (binding.settingsPanel.visibility == View.VISIBLE) {
                 binding.settingsPanel.visibility = View.GONE
                 setControlsVisible(true)
-                focusFirstControl()
+                focusAdvancedControl()
                 return true
             }
             if (controlsVisible) {
@@ -413,6 +417,38 @@ class LivePlayerActivity : AppCompatActivity() {
             }
         binding.recyclerSettings.adapter = settingsAdapter
         binding.recyclerSettings.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
+        binding.recyclerSettings.addOnChildAttachStateChangeListener(
+            object : androidx.recyclerview.widget.RecyclerView.OnChildAttachStateChangeListener {
+                override fun onChildViewAttachedToWindow(view: View) {
+                    view.setOnKeyListener { v, keyCode, event ->
+                        if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+                        val holder = binding.recyclerSettings.findContainingViewHolder(v) ?: return@setOnKeyListener false
+                        val pos =
+                            holder.bindingAdapterPosition.takeIf { it != androidx.recyclerview.widget.RecyclerView.NO_POSITION }
+                                ?: return@setOnKeyListener false
+
+                        when (keyCode) {
+                            KeyEvent.KEYCODE_DPAD_UP -> {
+                                if (pos == 0 && !binding.recyclerSettings.canScrollVertically(-1)) return@setOnKeyListener true
+                                false
+                            }
+
+                            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                val last = (binding.recyclerSettings.adapter?.itemCount ?: 0) - 1
+                                if (pos == last && !binding.recyclerSettings.canScrollVertically(1)) return@setOnKeyListener true
+                                false
+                            }
+
+                            else -> false
+                        }
+                    }
+                }
+
+                override fun onChildViewDetachedFromWindow(view: View) {
+                    view.setOnKeyListener(null)
+                }
+            },
+        )
         refreshSettings()
         updateDebugOverlay()
     }
@@ -466,6 +502,26 @@ class LivePlayerActivity : AppCompatActivity() {
     private fun focusFirstControl(): Boolean {
         if (binding.btnPlayPause.visibility == View.VISIBLE) return binding.btnPlayPause.requestFocus()
         return binding.btnBack.requestFocus()
+    }
+
+    private fun focusAdvancedControl(): Boolean {
+        return binding.btnAdvanced.requestFocus()
+    }
+
+    private fun focusSettingsPanel() {
+        binding.recyclerSettings.post {
+            val child = binding.recyclerSettings.getChildAt(0)
+            if (child != null) {
+                child.requestFocus()
+                return@post
+            }
+
+            binding.recyclerSettings.scrollToPosition(0)
+            binding.recyclerSettings.post {
+                val first = binding.recyclerSettings.getChildAt(0)
+                (first ?: binding.recyclerSettings).requestFocus()
+            }
+        }
     }
 
     private fun hasControlsFocus(): Boolean {

@@ -325,8 +325,21 @@
             android:padding="?attr/playerOsdPadSmall"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_action_fav"
-            android:tint="@color/player_button_tint"
-            android:visibility="gone" />
+                android:tint="@color/player_button_tint"
+                android:visibility="gone" />
+
+            <ImageButton
+                android:id="@+id/btn_recommend"
+                android:layout_width="?attr/playerOsdButtonTargetSize"
+                android:layout_height="?attr/playerOsdButtonTargetSize"
+                android:layout_marginEnd="?attr/playerOsdGap"
+                android:background="@drawable/blbl_focus_bg_round"
+                android:contentDescription="@string/player_btn_recommend"
+                android:focusable="true"
+                android:padding="?attr/playerOsdPadSmall"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_chevron_down"
+                android:tint="@color/player_button_tint" />
 
             <ImageButton
                 android:id="@+id/btn_playlist"

@@ -45,6 +45,7 @@ import blbl.cat3399.core.api.BiliApiException
 import blbl.cat3399.core.api.SponsorBlockApi
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.model.DanmakuShield
+import blbl.cat3399.core.model.VideoCard
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.tv.TvMode
@@ -141,6 +142,15 @@ class PlayerActivity : AppCompatActivity() {
     private var playlistUgcSeasonId: Long? = null
     private var playlistUgcSeasonTitle: String? = null
     private lateinit var session: PlayerSessionSettings
+
+    private data class RelatedVideosCache(
+        val bvid: String,
+        val items: List<VideoCard>,
+    )
+
+    private var relatedVideosCache: RelatedVideosCache? = null
+    private var relatedVideosFetchJob: kotlinx.coroutines.Job? = null
+    private var relatedVideosFetchToken: Int = 0
     private var subtitleAvailabilityKnown: Boolean = false
     private var subtitleAvailable: Boolean = false
     private var subtitleConfig: MediaItem.SubtitleConfiguration? = null
@@ -531,6 +541,7 @@ class PlayerActivity : AppCompatActivity() {
     private fun playbackModeLabel(code: String): String = when (code) {
         AppPrefs.PLAYER_PLAYBACK_MODE_LOOP_ONE -> "循环当前"
         AppPrefs.PLAYER_PLAYBACK_MODE_NEXT -> "播放下一个"
+        AppPrefs.PLAYER_PLAYBACK_MODE_RECOMMEND -> "播放推荐视频"
         AppPrefs.PLAYER_PLAYBACK_MODE_EXIT -> "退出播放器"
         else -> "什么都不做"
     }
@@ -563,6 +574,7 @@ class PlayerActivity : AppCompatActivity() {
             "跟随全局（$globalLabel）",
             "循环当前",
             "播放下一个",
+            "播放推荐视频",
             "什么都不做",
             "退出播放器",
         )
@@ -571,6 +583,7 @@ class PlayerActivity : AppCompatActivity() {
                 null -> "跟随全局（$globalLabel）"
                 AppPrefs.PLAYER_PLAYBACK_MODE_LOOP_ONE -> "循环当前"
                 AppPrefs.PLAYER_PLAYBACK_MODE_NEXT -> "播放下一个"
+                AppPrefs.PLAYER_PLAYBACK_MODE_RECOMMEND -> "播放推荐视频"
                 AppPrefs.PLAYER_PLAYBACK_MODE_EXIT -> "退出播放器"
                 else -> "什么都不做"
             }
@@ -588,6 +601,7 @@ class PlayerActivity : AppCompatActivity() {
                     chosen.startsWith("跟随全局") -> session.copy(playbackModeOverride = null)
                     chosen.startsWith("循环") -> session.copy(playbackModeOverride = AppPrefs.PLAYER_PLAYBACK_MODE_LOOP_ONE)
                     chosen.startsWith("播放下一个") -> session.copy(playbackModeOverride = AppPrefs.PLAYER_PLAYBACK_MODE_NEXT)
+                    chosen.startsWith("播放推荐") -> session.copy(playbackModeOverride = AppPrefs.PLAYER_PLAYBACK_MODE_RECOMMEND)
                     chosen.startsWith("退出") -> session.copy(playbackModeOverride = AppPrefs.PLAYER_PLAYBACK_MODE_EXIT)
                     else -> session.copy(playbackModeOverride = AppPrefs.PLAYER_PLAYBACK_MODE_NONE)
                 }
@@ -620,6 +634,80 @@ class PlayerActivity : AppCompatActivity() {
             negativeText = "关闭",
         ) { which, _ ->
             if (which != playlistIndex) playPlaylistIndex(which)
+        }
+    }
+
+    private fun showRecommendDialog() {
+        val requestBvid = currentBvid.trim()
+        if (requestBvid.isBlank()) {
+            Toast.makeText(this, "缺少 bvid", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val cached = relatedVideosCache?.takeIf { it.bvid == requestBvid }?.items.orEmpty()
+        if (cached.isNotEmpty()) {
+            showRecommendDialog(items = cached)
+            return
+        }
+
+        if (relatedVideosFetchJob?.isActive == true) {
+            Toast.makeText(this, "推荐视频加载中…", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val token = ++relatedVideosFetchToken
+        relatedVideosFetchJob =
+            lifecycleScope.launch {
+                try {
+                    val list =
+                        withContext(Dispatchers.IO) {
+                            BiliApi.archiveRelated(bvid = requestBvid, aid = currentAid)
+                        }
+                    if (token != relatedVideosFetchToken) return@launch
+                    if (currentBvid.trim() != requestBvid) return@launch
+
+                    relatedVideosCache = RelatedVideosCache(bvid = requestBvid, items = list)
+                    if (list.isEmpty()) {
+                        Toast.makeText(this@PlayerActivity, "暂无推荐视频", Toast.LENGTH_SHORT).show()
+                        return@launch
+                    }
+                    showRecommendDialog(items = list)
+                } catch (t: Throwable) {
+                    if (t is CancellationException) return@launch
+                    val e = t as? BiliApiException
+                    val msg = e?.apiMessage?.takeIf { it.isNotBlank() } ?: (t.message ?: "加载推荐视频失败")
+                    Toast.makeText(this@PlayerActivity, msg, Toast.LENGTH_SHORT).show()
+                } finally {
+                    if (token == relatedVideosFetchToken) relatedVideosFetchJob = null
+                }
+            }
+    }
+
+    private fun showRecommendDialog(items: List<VideoCard>) {
+        val labels =
+            items.mapIndexed { index, item ->
+                item.title.trim().takeIf { it.isNotBlank() } ?: "视频 ${index + 1}"
+            }
+        SingleChoiceDialog.show(
+            context = this,
+            title = "推荐视频",
+            items = labels,
+            checkedIndex = 0,
+            negativeText = "关闭",
+            onNegative = { binding.btnRecommend.post { binding.btnRecommend.requestFocus() } },
+        ) { which, _ ->
+            val picked = items.getOrNull(which) ?: return@show
+            val bvid = picked.bvid.trim()
+            if (bvid.isBlank()) return@show
+            startPlayback(
+                bvid = bvid,
+                cidExtra = picked.cid?.takeIf { it > 0 },
+                epIdExtra = null,
+                aidExtra = null,
+                initialTitle = picked.title.takeIf { it.isNotBlank() },
+            )
+            setControlsVisible(true)
+            focusFirstControl()
         }
     }
 
@@ -800,12 +888,106 @@ class PlayerActivity : AppCompatActivity() {
                 playNext(userInitiated = false)
             }
 
+            AppPrefs.PLAYER_PLAYBACK_MODE_RECOMMEND -> {
+                playRecommendedNext(userInitiated = false)
+            }
+
             AppPrefs.PLAYER_PLAYBACK_MODE_EXIT -> {
                 finish()
             }
 
             else -> Unit
         }
+    }
+
+    private fun pickRecommendedVideo(items: List<VideoCard>, excludeBvid: String): VideoCard? {
+        val safeExclude = excludeBvid.trim()
+        return items.firstOrNull { it.bvid.isNotBlank() && it.bvid != safeExclude }
+            ?: items.firstOrNull { it.bvid.isNotBlank() }
+    }
+
+    private fun playRecommendedNext(userInitiated: Boolean) {
+        val requestBvid = currentBvid.trim()
+        if (requestBvid.isBlank()) {
+            playNext(userInitiated = userInitiated)
+            return
+        }
+
+        val cached = relatedVideosCache?.takeIf { it.bvid == requestBvid }?.items.orEmpty()
+        val cachedPicked = pickRecommendedVideo(cached, excludeBvid = requestBvid)
+        if (cachedPicked != null) {
+            startPlayback(
+                bvid = cachedPicked.bvid,
+                cidExtra = cachedPicked.cid?.takeIf { it > 0 },
+                epIdExtra = null,
+                aidExtra = null,
+                initialTitle = cachedPicked.title.takeIf { it.isNotBlank() },
+            )
+            return
+        }
+
+        val activeJob = relatedVideosFetchJob
+        if (activeJob?.isActive == true) {
+            lifecycleScope.launch {
+                activeJob.join()
+                if (currentBvid.trim() != requestBvid) return@launch
+
+                val refreshed = relatedVideosCache?.takeIf { it.bvid == requestBvid }?.items.orEmpty()
+                val picked = pickRecommendedVideo(refreshed, excludeBvid = requestBvid)
+                if (picked != null) {
+                    startPlayback(
+                        bvid = picked.bvid,
+                        cidExtra = picked.cid?.takeIf { it > 0 },
+                        epIdExtra = null,
+                        aidExtra = null,
+                        initialTitle = picked.title.takeIf { it.isNotBlank() },
+                    )
+                } else {
+                    if (userInitiated) Toast.makeText(this@PlayerActivity, "暂无推荐视频", Toast.LENGTH_SHORT).show()
+                    playNext(userInitiated = userInitiated)
+                }
+            }
+            return
+        }
+
+        val token = ++relatedVideosFetchToken
+        relatedVideosFetchJob =
+            lifecycleScope.launch {
+                try {
+                    val list =
+                        withContext(Dispatchers.IO) {
+                            BiliApi.archiveRelated(bvid = requestBvid, aid = currentAid)
+                        }
+                    if (token != relatedVideosFetchToken) return@launch
+                    if (currentBvid.trim() != requestBvid) return@launch
+
+                    relatedVideosCache = RelatedVideosCache(bvid = requestBvid, items = list)
+                    val picked = pickRecommendedVideo(list, excludeBvid = requestBvid)
+                    if (picked == null) {
+                        if (userInitiated) Toast.makeText(this@PlayerActivity, "暂无推荐视频", Toast.LENGTH_SHORT).show()
+                        playNext(userInitiated = userInitiated)
+                        return@launch
+                    }
+
+                    startPlayback(
+                        bvid = picked.bvid,
+                        cidExtra = picked.cid?.takeIf { it > 0 },
+                        epIdExtra = null,
+                        aidExtra = null,
+                        initialTitle = picked.title.takeIf { it.isNotBlank() },
+                    )
+                } catch (t: Throwable) {
+                    if (t is CancellationException) return@launch
+                    if (userInitiated) {
+                        val e = t as? BiliApiException
+                        val msg = e?.apiMessage?.takeIf { it.isNotBlank() } ?: (t.message ?: "加载推荐视频失败")
+                        Toast.makeText(this@PlayerActivity, msg, Toast.LENGTH_SHORT).show()
+                    }
+                    playNext(userInitiated = userInitiated)
+                } finally {
+                    if (token == relatedVideosFetchToken) relatedVideosFetchJob = null
+                }
+            }
     }
 
     private fun playNext(userInitiated: Boolean) {
@@ -915,6 +1097,11 @@ class PlayerActivity : AppCompatActivity() {
         actionCoinCount = 0
         actionFavored = false
         updateActionButtonsUi()
+
+        relatedVideosFetchJob?.cancel()
+        relatedVideosFetchJob = null
+        relatedVideosFetchToken++
+        relatedVideosCache = null
 
         playbackConstraints = PlaybackConstraints()
         decodeFallbackAttempted = false
@@ -1498,6 +1685,7 @@ class PlayerActivity : AppCompatActivity() {
         holdSeekJob?.cancel()
         seekHintJob?.cancel()
         keyScrubEndJob?.cancel()
+        relatedVideosFetchJob?.cancel()
         loadJob?.cancel()
         loadJob = null
         dismissAutoResumeHint()
@@ -1595,6 +1783,11 @@ class PlayerActivity : AppCompatActivity() {
         }
         binding.btnNext.setOnClickListener {
             playNext(userInitiated = true)
+            setControlsVisible(true)
+        }
+
+        binding.btnRecommend.setOnClickListener {
+            showRecommendDialog()
             setControlsVisible(true)
         }
 

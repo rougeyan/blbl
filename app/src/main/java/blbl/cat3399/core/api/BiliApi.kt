@@ -1748,6 +1748,25 @@ object BiliApi {
         return BiliClient.getJson(url)
     }
 
+    suspend fun archiveRelated(bvid: String, aid: Long? = null): List<VideoCard> {
+        val safeBvid = bvid.trim()
+        val safeAid = aid?.takeIf { it > 0 }
+        if (safeBvid.isBlank() && safeAid == null) error("bvid or aid required")
+
+        val params = buildMap {
+            if (safeAid != null) put("aid", safeAid.toString())
+            if (safeBvid.isNotBlank()) put("bvid", safeBvid)
+        }
+        val url = BiliClient.withQuery(
+            "https://api.bilibili.com/x/web-interface/archive/related",
+            params,
+        )
+        val json = BiliClient.getJson(url)
+        val list = json.optJSONArray("data") ?: JSONArray()
+        AppLog.d(TAG, "archiveRelated items=${list.length()}")
+        return withContext(Dispatchers.Default) { parseVideoCards(list) }
+    }
+
     suspend fun seasonsArchivesList(
         mid: Long,
         seasonId: Long,

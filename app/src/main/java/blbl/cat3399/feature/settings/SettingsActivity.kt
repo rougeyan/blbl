@@ -602,7 +602,7 @@ class SettingsActivity : AppCompatActivity() {
             }
 
             "播放模式" -> {
-                val options = listOf("循环当前", "播放下一个", "什么都不做", "退出播放器")
+                val options = listOf("循环当前", "播放下一个", "播放推荐视频", "什么都不做", "退出播放器")
                 showChoiceDialog(
                     title = "播放模式（全局默认）",
                     items = options,
@@ -612,6 +612,7 @@ class SettingsActivity : AppCompatActivity() {
                         when (selected) {
                             "循环当前" -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_LOOP_ONE
                             "播放下一个" -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_NEXT
+                            "播放推荐视频" -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_RECOMMEND
                             "退出播放器" -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_EXIT
                             else -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_NONE
                         }
@@ -1249,6 +1250,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun playbackModeText(code: String): String = when (code) {
         blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_LOOP_ONE -> "循环当前"
         blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_NEXT -> "播放下一个"
+        blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_RECOMMEND -> "播放推荐视频"
         blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_EXIT -> "退出播放器"
         else -> "什么都不做"
     }

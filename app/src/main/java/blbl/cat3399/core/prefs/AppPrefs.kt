@@ -305,6 +305,7 @@ class AppPrefs(context: Context) {
 
         const val PLAYER_PLAYBACK_MODE_LOOP_ONE = "loop_one"
         const val PLAYER_PLAYBACK_MODE_NEXT = "next"
+        const val PLAYER_PLAYBACK_MODE_RECOMMEND = "recommend"
         const val PLAYER_PLAYBACK_MODE_NONE = "none"
         const val PLAYER_PLAYBACK_MODE_EXIT = "exit"
 

@@ -603,7 +603,9 @@ class PlayerActivity : AppCompatActivity() {
             return
         }
 
-        val title = playlistUgcSeasonTitle?.let { "合集：$it" } ?: "播放列表"
+        val title =
+            playlistUgcSeasonTitle?.let { "合集：$it" }
+                ?: if (isMultiPagePlaylist(list)) "分P" else "播放列表"
         val labels =
             list.mapIndexed { index, item ->
                 item.title?.trim()?.takeIf { it.isNotBlank() }
@@ -648,6 +650,33 @@ class PlayerActivity : AppCompatActivity() {
         return out
     }
 
+    private fun parseMultiPagePlaylistFromView(viewData: JSONObject, bvid: String, aid: Long?): List<PlayerPlaylistItem> {
+        val pages = viewData.optJSONArray("pages") ?: return emptyList()
+        if (pages.length() <= 1) return emptyList()
+        val out = ArrayList<PlayerPlaylistItem>(pages.length())
+        for (i in 0 until pages.length()) {
+            val obj = pages.optJSONObject(i) ?: continue
+            val cid = obj.optLong("cid").takeIf { it > 0 } ?: continue
+            val page = obj.optInt("page").takeIf { it > 0 } ?: (i + 1)
+            val part = obj.optString("part", "").trim()
+            val title =
+                if (part.isBlank()) {
+                    "P$page"
+                } else {
+                    "P$page $part"
+                }
+            out.add(
+                PlayerPlaylistItem(
+                    bvid = bvid,
+                    cid = cid,
+                    aid = aid,
+                    title = title,
+                ),
+            )
+        }
+        return out
+    }
+
     private fun parseUgcSeasonPlaylistFromArchivesList(json: JSONObject): List<PlayerPlaylistItem> {
         val archives = json.optJSONObject("data")?.optJSONArray("archives") ?: return emptyList()
         val out = ArrayList<PlayerPlaylistItem>(archives.length())
@@ -670,19 +699,25 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun pickPlaylistIndexForCurrentMedia(list: List<PlayerPlaylistItem>, bvid: String, aid: Long?, cid: Long?): Int {
         val safeBvid = bvid.trim()
-        if (safeBvid.isNotBlank()) {
-            val byBvid = list.indexOfFirst { it.bvid == safeBvid }
-            if (byBvid >= 0) return byBvid
+        if (cid != null && cid > 0) {
+            val byCid = list.indexOfFirst { it.cid == cid }
+            if (byCid >= 0) return byCid
         }
         if (aid != null && aid > 0) {
             val byAid = list.indexOfFirst { it.aid == aid }
             if (byAid >= 0) return byAid
         }
-        if (cid != null && cid > 0) {
-            val byCid = list.indexOfFirst { it.cid == cid }
-            if (byCid >= 0) return byCid
+        if (safeBvid.isNotBlank()) {
+            val byBvid = list.indexOfFirst { it.bvid == safeBvid }
+            if (byBvid >= 0) return byBvid
         }
         return -1
+    }
+
+    private fun isMultiPagePlaylist(list: List<PlayerPlaylistItem>): Boolean {
+        if (list.size < 2) return false
+        val bvid = currentBvid.takeIf { it.isNotBlank() } ?: return false
+        return list.all { it.bvid == bvid && (it.cid ?: 0L) > 0L }
     }
 
     private suspend fun maybeOverridePlaylistWithUgcSeason(viewData: JSONObject, bvid: String) {
@@ -723,6 +758,30 @@ class PlayerActivity : AppCompatActivity() {
         val itemsFromApi = parseUgcSeasonPlaylistFromArchivesList(json)
         val idxFromApi = pickPlaylistIndexForCurrentMedia(itemsFromApi, bvid = bvid, aid = aid, cid = cid)
         if (idxFromApi >= 0) apply(itemsFromApi, idxFromApi)
+    }
+
+    private fun maybeOverridePlaylistWithMultiPage(viewData: JSONObject, bvid: String) {
+        if (playlistUgcSeasonId != null) return
+        val pages = viewData.optJSONArray("pages") ?: return
+        if (pages.length() <= 1) return
+
+        val aid = currentAid ?: viewData.optLong("aid").takeIf { it > 0 }
+        val cid = currentCid.takeIf { it > 0 }
+
+        fun apply(items: List<PlayerPlaylistItem>, index: Int) {
+            if (items.isEmpty() || index !in items.indices) return
+            playlistToken?.let(PlayerPlaylistStore::remove)
+            playlistToken = null
+            playlistItems = items
+            playlistIndex = index
+            updatePlaylistControls()
+        }
+
+        val itemsFromView = parseMultiPagePlaylistFromView(viewData, bvid = bvid, aid = aid)
+        if (itemsFromView.size <= 1) return
+        val idx = pickPlaylistIndexForCurrentMedia(itemsFromView, bvid = bvid, aid = aid, cid = cid)
+        val safeIndex = if (idx in itemsFromView.indices) idx else 0
+        apply(itemsFromView, safeIndex)
     }
 
     private fun handlePlaybackEnded(exo: ExoPlayer) {
@@ -958,6 +1017,7 @@ class PlayerActivity : AppCompatActivity() {
                 playlistUgcSeasonId = null
                 playlistUgcSeasonTitle = null
                 maybeOverridePlaylistWithUgcSeason(viewData, bvid = safeBvid)
+                maybeOverridePlaylistWithMultiPage(viewData, bvid = safeBvid)
 
                 requestOnlineWatchingText(bvid = safeBvid, cid = cid)
 
@@ -2479,9 +2539,18 @@ class PlayerActivity : AppCompatActivity() {
         if (playbackToken != autoResumeToken) return
         val exo = player ?: return
 
+        val strictCidMatch = isMultiPagePlaylist(playlistItems)
         extractResumeCandidateFromPlayJson(playJson)?.let { cand ->
-            scheduleAutoResume(exo = exo, candidate = cand, playbackToken = playbackToken)
-            return
+            val data = playJson.optJSONObject("data") ?: playJson.optJSONObject("result") ?: JSONObject()
+            val lastCid = data.optLong("last_play_cid", -1L).takeIf { it > 0 }
+            when {
+                lastCid != null && lastCid != cid -> Unit
+                strictCidMatch && lastCid == null -> Unit
+                else -> {
+                    scheduleAutoResume(exo = exo, candidate = cand, playbackToken = playbackToken)
+                    return
+                }
+            }
         }
 
         autoResumeJob?.cancel()
@@ -2491,6 +2560,10 @@ class PlayerActivity : AppCompatActivity() {
                 if (!isActive) return@launch
                 if (playbackToken != autoResumeToken) return@launch
                 if (autoResumeCancelledByUser) return@launch
+                val data = playerJson.optJSONObject("data") ?: JSONObject()
+                val lastCid = data.optLong("last_play_cid", -1L).takeIf { it > 0 }
+                if (lastCid != null && lastCid != cid) return@launch
+                if (strictCidMatch && lastCid == null) return@launch
                 val cand = extractResumeCandidateFromPlayerWbiV2(playerJson) ?: return@launch
                 scheduleAutoResume(exo = exo, candidate = cand, playbackToken = playbackToken)
             }

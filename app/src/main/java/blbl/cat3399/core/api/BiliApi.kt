@@ -2205,6 +2205,49 @@ object BiliApi {
         return out
     }
 
+    private fun parseSpaceArcSearchVideoCards(arr: JSONArray): List<VideoCard> {
+        val out = ArrayList<VideoCard>(arr.length())
+        for (i in 0 until arr.length()) {
+            val obj = arr.optJSONObject(i) ?: continue
+            val bvid = obj.optString("bvid", "").trim()
+            if (bvid.isBlank()) continue
+
+            val aid = obj.optLong("aid").takeIf { it > 0 }
+            val cid = obj.optLong("cid").takeIf { it > 0 }
+            val title = obj.optString("title", "")
+            val cover = obj.optString("pic", obj.optString("cover", "")).trim()
+            val durationText = obj.optString("length", obj.optString("duration", "0:00"))
+            val play =
+                obj.optLong("play").takeIf { it > 0 }
+                    ?: obj.optString("play").trim().toLongOrNull()?.takeIf { it > 0 }
+            val danmaku =
+                obj.optLong("video_review").takeIf { it > 0 }
+                    ?: obj.optString("video_review").trim().toLongOrNull()?.takeIf { it > 0 }
+            val created =
+                obj.optLong("created").takeIf { it > 0 }
+                    ?: obj.optLong("pubdate").takeIf { it > 0 }
+
+            out.add(
+                VideoCard(
+                    bvid = bvid,
+                    cid = cid,
+                    aid = aid,
+                    title = title,
+                    coverUrl = cover,
+                    durationSec = parseDuration(durationText),
+                    ownerName = obj.optString("author", ""),
+                    ownerFace = null,
+                    ownerMid = obj.optLong("mid").takeIf { it > 0 },
+                    view = play,
+                    danmaku = danmaku,
+                    pubDate = created,
+                    pubDateText = null,
+                ),
+            )
+        }
+        return out
+    }
+
     private fun parseSearchVideoCards(arr: JSONArray): List<VideoCard> {
         val out = ArrayList<VideoCard>(arr.length())
         for (i in 0 until arr.length()) {
@@ -2540,6 +2583,51 @@ object BiliApi {
             "dynamicSpaceVideo hostMid=$hostMid pages=$pages rawItems=$rawItems cards=${cards.size} min=$minCardCount hasMore=$hasMore nextOffset=${nextOffset?.take(8)}",
         )
         return DynamicPage(cards, nextOffset)
+    }
+
+    suspend fun spaceArcSearchPage(
+        mid: Long,
+        pn: Int = 1,
+        ps: Int = 30,
+        order: String = "pubdate",
+        tid: Int = 0,
+        keyword: String? = null,
+    ): HasMorePage<VideoCard> {
+        val safeMid = mid.takeIf { it > 0 } ?: error("mid required")
+        val page = pn.coerceAtLeast(1)
+        val pageSize = ps.coerceIn(1, 50)
+        val safeOrder = order.trim().takeIf { it.isNotBlank() } ?: "pubdate"
+        val safeTid = tid.coerceAtLeast(0)
+        val safeKeyword = keyword?.trim().orEmpty()
+
+        val params =
+            buildMap {
+                put("mid", safeMid.toString())
+                put("pn", page.toString())
+                put("ps", pageSize.toString())
+                put("order", safeOrder)
+                if (safeTid > 0) put("tid", safeTid.toString())
+                if (safeKeyword.isNotBlank()) put("keyword", safeKeyword)
+            }
+        val keys = BiliClient.ensureWbiKeys()
+        val url = BiliClient.signedWbiUrl(path = "/x/space/wbi/arc/search", params = params, keys = keys)
+        val json = BiliClient.getJson(url)
+        val code = json.optInt("code", 0)
+        if (code != 0) {
+            val msg = json.optString("message", json.optString("msg", ""))
+            throw BiliApiException(apiCode = code, apiMessage = msg)
+        }
+
+        val data = json.optJSONObject("data") ?: JSONObject()
+        val list = data.optJSONObject("list") ?: JSONObject()
+        val vlist = list.optJSONArray("vlist") ?: JSONArray()
+        val total = data.optJSONObject("page")?.optInt("count", 0) ?: 0
+        return withContext(Dispatchers.Default) {
+            val out = parseSpaceArcSearchVideoCards(vlist)
+            val hasMore = out.isNotEmpty() && page * pageSize < total
+            AppLog.d(TAG, "spaceArcSearch mid=$safeMid page=$page size=${out.size} total=$total hasMore=$hasMore")
+            HasMorePage(items = out, page = page, hasMore = hasMore, total = total)
+        }
     }
 
     suspend fun spaceAccInfo(mid: Long): SpaceAccInfo {

@@ -45,6 +45,7 @@ class DynamicFragment : Fragment(), RefreshKeyHandler {
     private var isLoadingMore: Boolean = false
     private var endReached: Boolean = false
     private var nextOffset: String? = null
+    private var nextPage: Int = 1
     private var requestToken: Int = 0
     private var pendingFocusNextCardAfterLoadMoreFromDpad: Boolean = false
     private var pendingFocusNextCardAfterLoadMoreFromPos: Int = RecyclerView.NO_POSITION
@@ -327,7 +328,6 @@ class DynamicFragment : Fragment(), RefreshKeyHandler {
         followEndReached = false
         followIsLoadingMore = false
         val token = ++followRequestToken
-
         if (selectedMid == 0L) selectedMid = FollowingAdapter.MID_ALL
         followItems = listOf(FollowingAdapter.FollowingUi(FollowingAdapter.MID_ALL, "所有", null, isAll = true))
         followAdapter.submit(followItems, selected = selectedMid)
@@ -346,6 +346,9 @@ class DynamicFragment : Fragment(), RefreshKeyHandler {
             }
 
             followItems = followItems + uiItems
+            if (selectedMid != FollowingAdapter.MID_ALL && followItems.none { it.mid == selectedMid }) {
+                selectedMid = FollowingAdapter.MID_ALL
+            }
             followAdapter.submit(followItems, selected = selectedMid)
             followPage += 1
             followEndReached = !res.hasMore
@@ -391,6 +394,7 @@ class DynamicFragment : Fragment(), RefreshKeyHandler {
         clearPendingFocusNextCardAfterLoadMoreFromDpad()
         loadedBvids.clear()
         nextOffset = null
+        nextPage = 1
         endReached = false
         isLoadingMore = false
         requestToken++
@@ -401,27 +405,37 @@ class DynamicFragment : Fragment(), RefreshKeyHandler {
 
     private fun loadMoreFeed() {
         if (isLoadingMore || endReached) return
+        if (selectedMid == 0L) {
+            endReached = true
+            _binding?.swipeRefresh?.isRefreshing = false
+            return
+        }
         val token = requestToken
         isLoadingMore = true
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                val page = if (selectedMid == FollowingAdapter.MID_ALL) {
-                    BiliApi.dynamicAllVideo(offset = nextOffset)
+                if (selectedMid == FollowingAdapter.MID_ALL) {
+                    val page = BiliApi.dynamicAllVideo(offset = nextOffset)
+                    if (token != requestToken) return@launch
+                    nextOffset = page.nextOffset
+                    endReached = nextOffset == null
+                    val filtered = page.items.filter { loadedBvids.add(it.bvid) }
+                    videoAdapter.append(filtered)
                 } else {
-                    BiliApi.dynamicSpaceVideo(
-                        hostMid = selectedMid,
-                        offset = nextOffset,
-                        minCardCount = if (nextOffset.isNullOrBlank()) 24 else 0,
-                        maxPages = 8,
-                    )
+                    val targetPage = nextPage.coerceAtLeast(1)
+                    val page =
+                        BiliApi.spaceArcSearchPage(
+                            mid = selectedMid,
+                            pn = targetPage,
+                            ps = 30,
+                        )
+                    if (token != requestToken) return@launch
+
+                    nextPage = targetPage + 1
+                    endReached = !page.hasMore
+                    val filtered = page.items.filter { loadedBvids.add(it.bvid) }
+                    videoAdapter.append(filtered)
                 }
-                if (token != requestToken) return@launch
-
-                nextOffset = page.nextOffset
-                if (page.items.isEmpty() || nextOffset == null) endReached = true
-
-                val filtered = page.items.filter { loadedBvids.add(it.bvid) }
-                videoAdapter.append(filtered)
                 _binding?.recyclerDynamic?.post { maybeConsumePendingFocusNextCardAfterLoadMoreFromDpad() }
             } catch (t: Throwable) {
                 AppLog.e("Dynamic", "load feed failed mid=$selectedMid", t)

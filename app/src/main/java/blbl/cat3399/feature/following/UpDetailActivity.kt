@@ -45,7 +45,7 @@ class UpDetailActivity : BaseActivity() {
     private val loadedBvids = HashSet<String>()
     private var isLoadingMore: Boolean = false
     private var endReached: Boolean = false
-    private var nextOffset: String? = null
+    private var nextPage: Int = 1
     private var requestToken: Int = 0
 
     private var pendingFocusFirstItemAfterLoad: Boolean = false
@@ -285,7 +285,7 @@ class UpDetailActivity : BaseActivity() {
     private fun resetAndLoad() {
         requestToken++
         loadedBvids.clear()
-        nextOffset = null
+        nextPage = 1
         endReached = false
         isLoadingMore = false
         pendingFocusFirstItemAfterLoad = true
@@ -322,21 +322,20 @@ class UpDetailActivity : BaseActivity() {
     private fun loadMoreFeed(isRefresh: Boolean = false) {
         if (isLoadingMore || endReached) return
         val token = requestToken
-        val offset = nextOffset
+        val targetPage = nextPage.coerceAtLeast(1)
         isLoadingMore = true
         lifecycleScope.launch {
             try {
                 val page =
-                    BiliApi.dynamicSpaceVideo(
-                        hostMid = mid,
-                        offset = offset,
-                        minCardCount = if (isRefresh && offset.isNullOrBlank()) 24 else 0,
-                        maxPages = 8,
+                    BiliApi.spaceArcSearchPage(
+                        mid = mid,
+                        pn = targetPage,
+                        ps = 30,
                     )
                 if (token != requestToken) return@launch
 
-                nextOffset = page.nextOffset
-                if (page.items.isEmpty() || nextOffset == null) endReached = true
+                nextPage = targetPage + 1
+                endReached = page.items.isEmpty() || !page.hasMore
 
                 val filtered = page.items.filter { loadedBvids.add(it.bvid) }
                 if (isRefresh) adapter.submit(filtered) else adapter.append(filtered)
@@ -346,7 +345,7 @@ class UpDetailActivity : BaseActivity() {
                     maybeConsumePendingFocusNextCardAfterLoadMoreFromDpad()
                 }
             } catch (t: Throwable) {
-                AppLog.e("UpDetail", "loadFeed failed mid=$mid offset=${offset?.take(8)}", t)
+                AppLog.e("UpDetail", "loadFeed failed mid=$mid page=$targetPage", t)
                 Toast.makeText(this@UpDetailActivity, "加载失败，可查看 Logcat(标签 BLBL)", Toast.LENGTH_SHORT).show()
             } finally {
                 if (token == requestToken) binding.swipeRefresh.isRefreshing = false

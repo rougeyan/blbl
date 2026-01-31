@@ -32,6 +32,7 @@ class VideoDetailHeaderAdapter(
     private var seasonTitle: String? = null
     private var parts: List<PlayerPlaylistItem> = emptyList()
     private var seasonItems: List<PlayerPlaylistItem> = emptyList()
+    private var seasonIndex: Int? = null
 
     init {
         setHasStableIds(true)
@@ -56,6 +57,7 @@ class VideoDetailHeaderAdapter(
         seasonTitle: String?,
         parts: List<PlayerPlaylistItem>,
         seasonItems: List<PlayerPlaylistItem>,
+        seasonIndex: Int?,
     ) {
         this.title = title
         this.desc = desc
@@ -65,6 +67,7 @@ class VideoDetailHeaderAdapter(
         this.seasonTitle = seasonTitle
         this.parts = parts
         this.seasonItems = seasonItems
+        this.seasonIndex = seasonIndex
         notifyItemChanged(0)
     }
 
@@ -83,6 +86,7 @@ class VideoDetailHeaderAdapter(
             seasonTitle = seasonTitle,
             parts = parts,
             seasonItems = seasonItems,
+            seasonIndex = seasonIndex,
         )
     }
 
@@ -107,6 +111,7 @@ class VideoDetailHeaderAdapter(
         private val partsAdapter = VideoDetailPlaylistAdapter { item, index -> onPartClick(item, index) }
         private val seasonAdapter = VideoDetailPlaylistAdapter { item, index -> onSeasonClick(item, index) }
         private var lastUiScale: Float? = null
+        private var lastSeasonAutoScrollKey: String? = null
 
         init {
             binding.btnPlay.setOnClickListener { onPlayClick() }
@@ -130,6 +135,7 @@ class VideoDetailHeaderAdapter(
             seasonTitle: String?,
             parts: List<PlayerPlaylistItem>,
             seasonItems: List<PlayerPlaylistItem>,
+            seasonIndex: Int?,
         ) {
             val uiScale = UiScale.factor(binding.root.context)
             if (lastUiScale != uiScale) {
@@ -171,8 +177,27 @@ class VideoDetailHeaderAdapter(
                 val safeTitle = seasonTitle?.trim().takeIf { !it.isNullOrBlank() }
                 binding.tvSeasonHeader.text = safeTitle?.let { "合集：$it" } ?: "合集（${seasonItems.size}）"
                 seasonAdapter.submit(seasonItems)
+                maybeAutoScrollSeason(seasonItems, seasonIndex)
             } else {
                 seasonAdapter.submit(emptyList())
+                lastSeasonAutoScrollKey = null
+            }
+        }
+
+        private fun maybeAutoScrollSeason(seasonItems: List<PlayerPlaylistItem>, seasonIndex: Int?) {
+            val idx = seasonIndex?.takeIf { it in seasonItems.indices } ?: return
+            val targetBvid = seasonItems[idx].bvid.trim()
+            if (targetBvid.isBlank()) return
+
+            val firstBvid = seasonItems.firstOrNull()?.bvid?.trim().orEmpty()
+            val lastBvid = seasonItems.lastOrNull()?.bvid?.trim().orEmpty()
+            val autoScrollKey = "$targetBvid|$idx|${seasonItems.size}|$firstBvid|$lastBvid"
+            if (autoScrollKey == lastSeasonAutoScrollKey) return
+            lastSeasonAutoScrollKey = autoScrollKey
+
+            binding.recyclerSeason.post {
+                val lm = binding.recyclerSeason.layoutManager as? LinearLayoutManager ?: return@post
+                lm.scrollToPositionWithOffset(idx, binding.recyclerSeason.paddingLeft)
             }
         }
 

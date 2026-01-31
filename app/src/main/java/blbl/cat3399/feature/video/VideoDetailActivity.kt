@@ -57,6 +57,7 @@ class VideoDetailActivity : BaseActivity() {
     private var currentParts: List<PlayerPlaylistItem> = emptyList()
     private var currentUgcSeasonTitle: String? = null
     private var currentUgcSeasonItems: List<PlayerPlaylistItem> = emptyList()
+    private var currentUgcSeasonIndex: Int? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -167,6 +168,7 @@ class VideoDetailActivity : BaseActivity() {
             seasonTitle = currentUgcSeasonTitle,
             parts = currentParts,
             seasonItems = currentUgcSeasonItems,
+            seasonIndex = currentUgcSeasonIndex,
         )
 
         binding.recycler.post { headerAdapter.requestFocusPlay() }
@@ -259,6 +261,7 @@ class VideoDetailActivity : BaseActivity() {
                     val ugcSeason = viewData.optJSONObject("ugc_season")
                     currentUgcSeasonTitle = ugcSeason?.optString("title", "")?.trim()?.takeIf { it.isNotBlank() }
                     currentUgcSeasonItems = emptyList()
+                    currentUgcSeasonIndex = null
                     if (ugcSeason != null) {
                         val itemsFromView = parseUgcSeasonPlaylistFromView(ugcSeason)
                         if (itemsFromView.isNotEmpty()) {
@@ -277,6 +280,13 @@ class VideoDetailActivity : BaseActivity() {
                             }
                         }
                     }
+                    currentUgcSeasonIndex =
+                        pickPlaylistIndexForCurrentMedia(
+                            list = currentUgcSeasonItems,
+                            bvid = resolvedBvid,
+                            aid = resolvedAid,
+                            cid = resolvedCid,
+                        ).takeIf { it >= 0 }
 
                     val related =
                         withContext(Dispatchers.IO) {
@@ -293,6 +303,7 @@ class VideoDetailActivity : BaseActivity() {
                         seasonTitle = currentUgcSeasonTitle,
                         parts = currentParts,
                         seasonItems = currentUgcSeasonItems,
+                        seasonIndex = currentUgcSeasonIndex,
                     )
                     recommendAdapter.submit(related)
                 } catch (t: Throwable) {
@@ -339,14 +350,19 @@ class VideoDetailActivity : BaseActivity() {
             val section = sections.optJSONObject(i) ?: continue
             val eps = section.optJSONArray("episodes") ?: continue
             for (j in 0 until eps.length()) {
-                val obj = eps.optJSONObject(j) ?: continue
-                val bvid = obj.optString("bvid", "").trim()
+                val ep = eps.optJSONObject(j) ?: continue
+                val arc = ep.optJSONObject("arc") ?: JSONObject()
+                val bvid = ep.optString("bvid", "").trim().ifBlank { arc.optString("bvid", "").trim() }
                 if (bvid.isBlank()) continue
-                val aid = obj.optLong("aid").takeIf { it > 0L }
-                val title = obj.optString("title", "").trim().takeIf { it.isNotBlank() }
+                val cid = ep.optLong("cid").takeIf { it > 0L } ?: arc.optLong("cid").takeIf { it > 0L }
+                val aid = ep.optLong("aid").takeIf { it > 0L } ?: arc.optLong("aid").takeIf { it > 0L }
+                val title =
+                    ep.optString("title", "").trim().takeIf { it.isNotBlank() }
+                        ?: arc.optString("title", "").trim().takeIf { it.isNotBlank() }
                 out.add(
                     PlayerPlaylistItem(
                         bvid = bvid,
+                        cid = cid,
                         aid = aid,
                         title = title,
                     ),
@@ -354,6 +370,23 @@ class VideoDetailActivity : BaseActivity() {
             }
         }
         return out
+    }
+
+    private fun pickPlaylistIndexForCurrentMedia(list: List<PlayerPlaylistItem>, bvid: String, aid: Long?, cid: Long?): Int {
+        val safeBvid = bvid.trim()
+        if (cid != null && cid > 0) {
+            val byCid = list.indexOfFirst { it.cid == cid }
+            if (byCid >= 0) return byCid
+        }
+        if (aid != null && aid > 0) {
+            val byAid = list.indexOfFirst { it.aid == aid }
+            if (byAid >= 0) return byAid
+        }
+        if (safeBvid.isNotBlank()) {
+            val byBvid = list.indexOfFirst { it.bvid == safeBvid }
+            if (byBvid >= 0) return byBvid
+        }
+        return -1
     }
 
     private fun parseUgcSeasonPlaylistFromArchivesList(json: JSONObject): List<PlayerPlaylistItem> {

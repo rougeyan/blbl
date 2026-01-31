@@ -70,6 +70,50 @@
     <dimen name="video_card_title_text_size_tv">18sp</dimen>
     <dimen name="video_card_subtitle_text_size_tv">14sp</dimen>
 
+    <!-- Video detail: header (baseline 1080p@1.5) -->
+    <dimen name="video_detail_header_padding_start_tv">16dp</dimen>
+    <dimen name="video_detail_header_padding_top_tv">16dp</dimen>
+    <dimen name="video_detail_header_padding_end_tv">16dp</dimen>
+    <dimen name="video_detail_header_padding_bottom_tv">12dp</dimen>
+
+    <dimen name="video_detail_header_cover_width_tv">480dp</dimen>
+
+    <dimen name="video_detail_header_title_margin_start_tv">16dp</dimen>
+    <dimen name="video_detail_header_title_margin_end_tv">12dp</dimen>
+    <dimen name="video_detail_header_title_text_size_tv">30sp</dimen>
+
+    <dimen name="video_detail_header_up_card_margin_top_tv">12dp</dimen>
+    <dimen name="video_detail_header_up_card_corner_radius_tv">14dp</dimen>
+    <dimen name="video_detail_header_up_card_stroke_width_tv">2dp</dimen>
+    <dimen name="video_detail_header_up_card_padding_h_tv">12dp</dimen>
+    <dimen name="video_detail_header_up_card_padding_v_tv">10dp</dimen>
+    <dimen name="video_detail_header_up_avatar_size_tv">56dp</dimen>
+    <dimen name="video_detail_header_up_name_margin_start_tv">12dp</dimen>
+    <dimen name="video_detail_header_up_name_max_width_tv">320dp</dimen>
+    <dimen name="video_detail_header_up_name_text_size_tv">22sp</dimen>
+
+    <dimen name="video_detail_header_desc_margin_top_tv">12dp</dimen>
+    <dimen name="video_detail_header_desc_margin_end_tv">12dp</dimen>
+    <dimen name="video_detail_header_desc_text_size_tv">20sp</dimen>
+
+    <dimen name="video_detail_header_play_margin_top_tv">12dp</dimen>
+    <dimen name="video_detail_header_play_text_size_tv">22sp</dimen>
+    <dimen name="video_detail_header_play_corner_radius_tv">14dp</dimen>
+    <dimen name="video_detail_header_play_stroke_width_tv">2dp</dimen>
+
+    <dimen name="video_detail_header_parts_margin_top_tv">20dp</dimen>
+    <dimen name="video_detail_header_season_margin_top_tv">8dp</dimen>
+    <dimen name="video_detail_header_recommend_margin_top_tv">16dp</dimen>
+    <dimen name="video_detail_header_section_text_size_tv">22sp</dimen>
+    <dimen name="video_detail_header_playlist_padding_v_tv">8dp</dimen>
+
+    <!-- Video detail: playlist item (baseline 1080p@1.5) -->
+    <dimen name="video_detail_playlist_item_height_tv">52dp</dimen>
+    <dimen name="video_detail_playlist_item_margin_tv">8dp</dimen>
+    <dimen name="video_detail_playlist_item_min_width_tv">140dp</dimen>
+    <dimen name="video_detail_playlist_item_text_size_tv">16sp</dimen>
+    <dimen name="video_detail_playlist_item_corner_radius_tv">20dp</dimen>
+
     <!-- Dynamic: following list -->
     <dimen name="dynamic_following_panel_width">190dp</dimen>
     <dimen name="dynamic_following_panel_width_tv">250dp</dimen>

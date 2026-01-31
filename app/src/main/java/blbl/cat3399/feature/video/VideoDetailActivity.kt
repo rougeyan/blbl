@@ -177,6 +177,8 @@ class VideoDetailActivity : BaseActivity() {
         super.onResume()
         Immersive.apply(this, BiliClient.prefs.fullscreenEnabled)
         applyUiMode()
+        headerAdapter.invalidateSizing()
+        recommendAdapter.invalidateSizing()
     }
 
     override fun onDestroy() {
@@ -471,4 +473,3 @@ class VideoDetailActivity : BaseActivity() {
         private const val ACTIVITY_STACK_MAX_DEPTH: Int = 3
     }
 }
-

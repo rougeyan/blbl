@@ -77,10 +77,10 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class PlayerActivity : BaseActivity() {
-    private lateinit var binding: ActivityPlayerBinding
-    private var player: ExoPlayer? = null
-    private var debugJob: kotlinx.coroutines.Job? = null
-    private val debug = PlayerDebugMetrics()
+    internal lateinit var binding: ActivityPlayerBinding
+    internal var player: ExoPlayer? = null
+    internal var debugJob: kotlinx.coroutines.Job? = null
+    internal val debug = PlayerDebugMetrics()
     private var progressJob: kotlinx.coroutines.Job? = null
     private var autoResumeJob: kotlinx.coroutines.Job? = null
     private var autoResumeHintTimeoutJob: kotlinx.coroutines.Job? = null
@@ -121,7 +121,7 @@ class PlayerActivity : BaseActivity() {
     private var smartSeekTotalMs: Long = 0L
     private var tapSeekActiveDirection: Int = 0
     private var tapSeekActiveUntilMs: Long = 0L
-    private var riskControlBypassHintShown: Boolean = false
+    internal var riskControlBypassHintShown: Boolean = false
     private var seekOsdToken: Long = 0L
     private var transientSeekOsdVisible: Boolean = false
     private var bottomBarFullConstraints: ConstraintSet? = null
@@ -135,8 +135,8 @@ class PlayerActivity : BaseActivity() {
 
     private var osdMode: OsdMode = OsdMode.Hidden
 
-    private var currentBvid: String = ""
-    private var currentCid: Long = -1L
+    internal var currentBvid: String = ""
+    internal var currentCid: Long = -1L
     private var currentEpId: Long? = null
     private var currentAid: Long? = null
     private var currentUpMid: Long = 0L
@@ -149,7 +149,7 @@ class PlayerActivity : BaseActivity() {
     private var playlistIndex: Int = -1
     private var playlistUgcSeasonId: Long? = null
     private var playlistUgcSeasonTitle: String? = null
-    private lateinit var session: PlayerSessionSettings
+    internal lateinit var session: PlayerSessionSettings
 
     private data class RelatedVideosCache(
         val bvid: String,
@@ -159,12 +159,12 @@ class PlayerActivity : BaseActivity() {
     private var relatedVideosCache: RelatedVideosCache? = null
     private var relatedVideosFetchJob: kotlinx.coroutines.Job? = null
     private var relatedVideosFetchToken: Int = 0
-    private var subtitleAvailabilityKnown: Boolean = false
-    private var subtitleAvailable: Boolean = false
-    private var subtitleConfig: MediaItem.SubtitleConfiguration? = null
-    private var subtitleItems: List<SubtitleItem> = emptyList()
-    private var lastAvailableQns: List<Int> = emptyList()
-    private var lastAvailableAudioIds: List<Int> = emptyList()
+    internal var subtitleAvailabilityKnown: Boolean = false
+    internal var subtitleAvailable: Boolean = false
+    internal var subtitleConfig: MediaItem.SubtitleConfiguration? = null
+    internal var subtitleItems: List<SubtitleItem> = emptyList()
+    internal var lastAvailableQns: List<Int> = emptyList()
+    internal var lastAvailableAudioIds: List<Int> = emptyList()
     private var danmakuSegmentSizeMs: Int = DANMAKU_DEFAULT_SEGMENT_MS
     private var danmakuSegmentTotal: Int = 0
     private var danmakuShield: DanmakuShield? = null
@@ -302,7 +302,7 @@ class PlayerActivity : BaseActivity() {
         binding = ActivityPlayerBinding.inflate(layoutInflater)
         setContentView(binding.root)
         Immersive.apply(this, BiliClient.prefs.fullscreenEnabled)
-        applyUiMode()
+        PlayerUiMode.applyVideo(this, binding)
         binding.topBar.setBackgroundResource(R.drawable.bg_player_top_scrim_strong)
         ensureBottomBarConstraintSets()
 
@@ -313,7 +313,7 @@ class PlayerActivity : BaseActivity() {
             val h = b - t
             val ow = or - ol
             val oh = ob - ot
-            if (w != ow || h != oh) applyUiMode()
+            if (w != ow || h != oh) PlayerUiMode.applyVideo(this, binding)
         }
 
         binding.topBar.visibility = View.GONE
@@ -1541,7 +1541,7 @@ class PlayerActivity : BaseActivity() {
     override fun onResume() {
         super.onResume()
         PlayerOsdSizing.applyTheme(this)
-        applyUiMode()
+        PlayerUiMode.applyVideo(this, binding)
         applyActionButtonsVisibility()
         updatePersistentBottomProgressBarVisibility()
         (binding.recyclerSettings.adapter as? PlayerSettingsAdapter)?.let { refreshSettings(it) }
@@ -3096,7 +3096,7 @@ class PlayerActivity : BaseActivity() {
         binding.btnDanmaku.isSelected = session.danmaku.enabled
     }
 
-    private fun updateSubtitleButton() {
+    internal fun updateSubtitleButton() {
         if (!subtitleAvailabilityKnown) {
             binding.btnSubtitle.isEnabled = true
             binding.btnSubtitle.alpha = 1.0f
@@ -3137,7 +3137,7 @@ class PlayerActivity : BaseActivity() {
         updateSubtitleButton()
     }
 
-    private fun applySubtitleEnabled(exo: ExoPlayer) {
+    internal fun applySubtitleEnabled(exo: ExoPlayer) {
         val disable = (!subtitleAvailable) || (!session.subtitleEnabled)
         exo.trackSelectionParameters =
             exo.trackSelectionParameters
@@ -3172,7 +3172,7 @@ class PlayerActivity : BaseActivity() {
             false
         }
 
-    private fun refreshSettings(adapter: PlayerSettingsAdapter) {
+    internal fun refreshSettings(adapter: PlayerSettingsAdapter) {
         val prefs = BiliClient.prefs
         adapter.submit(
             listOf(
@@ -3506,42 +3506,7 @@ class PlayerActivity : BaseActivity() {
         return SingleSampleMediaSource.Factory(ds).createMediaSource(subtitle, C.TIME_UNSET)
     }
 
-    private fun showCodecDialog() {
-        val options = arrayOf("AVC", "HEVC", "AV1")
-        val current = options.indexOf(session.preferCodec).coerceAtLeast(0)
-        SingleChoiceDialog.show(
-            context = this,
-            title = "视频编码",
-            items = options.toList(),
-            checkedIndex = current,
-            negativeText = "取消",
-        ) { which, _ ->
-            val selected = options.getOrNull(which) ?: "AVC"
-            session = session.copy(preferCodec = selected)
-            refreshSettings(binding.recyclerSettings.adapter as PlayerSettingsAdapter)
-            reloadStream(keepPosition = true)
-        }
-    }
-
-    private fun showSpeedDialog() {
-        val options = arrayOf("0.50x", "0.75x", "1.00x", "1.25x", "1.50x", "2.00x")
-        val current = options.indexOf(String.format(Locale.US, "%.2fx", session.playbackSpeed)).let { if (it >= 0) it else 2 }
-        SingleChoiceDialog.show(
-            context = this,
-            title = "播放速度",
-            items = options.toList(),
-            checkedIndex = current,
-            negativeText = "取消",
-        ) { which, _ ->
-            val selected = options.getOrNull(which) ?: "1.00x"
-            val v = selected.removeSuffix("x").toFloatOrNull() ?: 1.0f
-            session = session.copy(playbackSpeed = v)
-            player?.setPlaybackSpeed(v)
-            refreshSettings(binding.recyclerSettings.adapter as PlayerSettingsAdapter)
-        }
-    }
-
-    private fun reloadStream(keepPosition: Boolean, resetConstraints: Boolean = true) {
+    internal fun reloadStream(keepPosition: Boolean, resetConstraints: Boolean = true) {
         val exo = player ?: return
         val cid = currentCid
         val bvid = currentBvid
@@ -3606,287 +3571,6 @@ class PlayerActivity : BaseActivity() {
                     Toast.makeText(this@PlayerActivity, "切换失败：${t.message}", Toast.LENGTH_SHORT).show()
                 }
             }
-        }
-    }
-
-    private fun handlePlayUrlErrorIfNeeded(t: Throwable): Boolean {
-        val e = t as? BiliApiException ?: return false
-        if (!isRiskControl(e)) return false
-
-        val prefs = BiliClient.prefs
-        val savedVoucher = prefs.gaiaVgateVVoucher
-        val savedAt = prefs.gaiaVgateVVoucherSavedAtMs
-        val hasSavedVoucher = !savedVoucher.isNullOrBlank()
-
-        val msg =
-            buildString {
-                append("B 站返回：").append(e.apiCode).append(" / ").append(e.apiMessage)
-                append("\n\n")
-                if (e.apiCode == -352 && hasSavedVoucher) {
-                    append("已记录 v_voucher，可到“设置 -> 风控验证”手动完成人机验证后重试播放。")
-                    if (savedAt > 0L) {
-                        append("\n")
-                        append("记录时间：").append(android.text.format.DateFormat.format("yyyy-MM-dd HH:mm", savedAt))
-                    }
-                } else {
-                    append("你的账号或网络环境可能触发风控，建议重新登录或稍后重试。")
-                }
-                append("\n")
-                append("如持续出现，请向作者反馈日志。")
-            }
-
-        if (e.apiCode == -352 && hasSavedVoucher) {
-            MaterialAlertDialogBuilder(this)
-                .setTitle("需要风控验证")
-                .setMessage(msg)
-                .setPositiveButton("去设置") { _, _ ->
-                    startActivity(Intent(this, SettingsActivity::class.java))
-                }
-                .setNegativeButton("关闭", null)
-                .show()
-        } else {
-            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
-        }
-        return true
-    }
-
-    private fun showRiskControlBypassHintIfNeeded(playJson: JSONObject) {
-        if (riskControlBypassHintShown) return
-        if (!playJson.optBoolean("__blbl_risk_control_bypassed", false)) return
-        riskControlBypassHintShown = true
-
-        val code = playJson.optInt("__blbl_risk_control_code", 0)
-        val message = playJson.optString("__blbl_risk_control_message", "")
-        val msg =
-            buildString {
-                append("B 站返回：").append(code).append(" / ").append(message)
-                append("\n\n")
-                append("你的账号或网络环境可能触发风控，建议重新登录或稍后重试。")
-                append("\n")
-                append("如持续出现，请向作者反馈日志。")
-            }
-        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
-    }
-
-    private fun isRiskControl(e: BiliApiException): Boolean {
-        if (e.apiCode == -412 || e.apiCode == -352) return true
-        val m = e.apiMessage
-        return m.contains("风控") || m.contains("拦截") || m.contains("风险")
-    }
-
-    private fun updateDebugOverlay() {
-        val enabled = session.debugEnabled
-        binding.tvDebug.visibility = if (enabled) View.VISIBLE else View.GONE
-        debugJob?.cancel()
-        if (!enabled) return
-        val exo = player ?: return
-        debugJob = lifecycleScope.launch {
-            while (isActive) {
-                binding.tvDebug.text = buildDebugText(exo)
-                delay(500)
-            }
-        }
-    }
-
-    private fun buildDebugText(exo: ExoPlayer): String {
-        updateDebugVideoStatsFromCounters(exo)
-        val sb = StringBuilder()
-        val state =
-            when (exo.playbackState) {
-                Player.STATE_IDLE -> "IDLE"
-                Player.STATE_BUFFERING -> "BUFFERING"
-                Player.STATE_READY -> "READY"
-                Player.STATE_ENDED -> "ENDED"
-                else -> exo.playbackState.toString()
-            }
-        sb.append("state=").append(state)
-        sb.append(" playing=").append(exo.isPlaying)
-        sb.append(" pwr=").append(exo.playWhenReady)
-        sb.append('\n')
-
-        sb.append("pos=").append(exo.currentPosition).append("ms")
-        sb.append(" buf=").append(exo.bufferedPosition).append("ms")
-        sb.append(" spd=").append(String.format(Locale.US, "%.2f", exo.playbackParameters.speed))
-        sb.append('\n')
-
-        val trackFormat = pickSelectedVideoFormat(exo)
-        val res = buildDebugResolutionText(exo.videoSize, debug.videoInputWidth, debug.videoInputHeight, trackFormat)
-        sb.append("res=").append(res)
-        val fps =
-            formatDebugFps(debug.renderFps)
-                ?: formatDebugFps(debug.videoInputFps ?: trackFormat?.frameRate)
-                ?: "-"
-        sb.append(" fps=").append(fps)
-        val cdnVideo = debug.videoTransferHost?.trim().takeIf { !it.isNullOrBlank() }
-        val cdnAudio = debug.audioTransferHost?.trim().takeIf { !it.isNullOrBlank() }
-        val cdnPicked = cdnVideo ?: debug.cdnHost?.trim().takeIf { !it.isNullOrBlank() } ?: "-"
-        val cdnHost =
-            if (!cdnAudio.isNullOrBlank() && !cdnVideo.isNullOrBlank() && cdnAudio != cdnVideo) {
-                "v=$cdnVideo a=$cdnAudio"
-            } else {
-                cdnPicked
-            }
-        if (cdnHost.length <= 42) {
-            sb.append(" cdn=").append(cdnHost)
-            sb.append('\n')
-        } else {
-            sb.append('\n')
-            sb.append("cdn=").append(cdnHost)
-            sb.append('\n')
-        }
-
-        sb.append("decoder=").append(shortenDebugValue(debug.videoDecoderName ?: "-", maxChars = 64))
-        sb.append('\n')
-
-        sb.append("dropped=").append(debug.droppedFramesTotal)
-        sb.append(" rebuffer=").append(debug.rebufferCount)
-        return sb.toString()
-    }
-
-    private fun updateDebugVideoStatsFromCounters(exo: ExoPlayer) {
-        val nowMs = SystemClock.elapsedRealtime()
-        val counters = exo.videoDecoderCounters ?: return
-        counters.ensureUpdated()
-
-        // Dropped frames: keep the max to avoid going backwards across updates.
-        debug.droppedFramesTotal = maxOf(debug.droppedFramesTotal, counters.droppedBufferCount.toLong())
-
-        // Render fps: derive from rendered output buffers between overlay updates.
-        val count = counters.renderedOutputBufferCount
-        val lastCount = debug.renderedFramesLastCount
-        val lastAt = debug.renderedFramesLastAtMs
-        debug.renderedFramesLastCount = count
-        debug.renderedFramesLastAtMs = nowMs
-
-        if (lastCount == null || lastAt == null) return
-        val deltaMs = nowMs - lastAt
-        val deltaFrames = count - lastCount
-        if (deltaMs <= 0L || deltaMs > 10_000L) return
-        if (deltaFrames <= 0) return
-        val instantFps = (deltaFrames * 1000f) / deltaMs.toFloat()
-        debug.renderFps = debug.renderFps?.let { it * 0.7f + instantFps * 0.3f } ?: instantFps
-    }
-
-    private fun buildDebugResolutionText(vs: VideoSize, fallbackWidth: Int?, fallbackHeight: Int?, trackFormat: Format?): String {
-        val w = vs.width.takeIf { it > 0 } ?: fallbackWidth ?: 0
-        val h = vs.height.takeIf { it > 0 } ?: fallbackHeight ?: 0
-        if (w > 0 && h > 0) return "${w}x${h}"
-        val tw = trackFormat?.width?.takeIf { it > 0 } ?: 0
-        val th = trackFormat?.height?.takeIf { it > 0 } ?: 0
-        return if (tw > 0 && th > 0) "${tw}x${th}" else "-"
-    }
-
-    private fun formatDebugFps(fps: Float?): String? {
-        val v = fps?.takeIf { it > 0f } ?: return null
-        val rounded = v.roundToInt().toFloat()
-        return if (abs(v - rounded) < 0.05f) rounded.toInt().toString() else String.format(Locale.US, "%.1f", v)
-    }
-
-    private fun shortenDebugValue(value: String, maxChars: Int): String {
-        val v = value.trim()
-        if (v.length <= maxChars) return v
-        return v.take(maxChars - 1) + "…"
-    }
-
-    private fun pickSelectedVideoFormat(exo: ExoPlayer): Format? {
-        val tracks = exo.currentTracks
-        for (g in tracks.groups) {
-            if (!g.isSelected) continue
-            for (i in 0 until g.length) {
-                if (!g.isTrackSelected(i)) continue
-                val f = g.getTrackFormat(i)
-                val mime = f.sampleMimeType ?: ""
-                if (mime.startsWith("video/")) return f
-            }
-        }
-        return null
-    }
-
-    private fun showDanmakuOpacityDialog() {
-        val options = (20 downTo 1).map { it / 20f }
-        val items = options.map { String.format(Locale.US, "%.2f", it) }
-        val current = options.indices.minByOrNull { kotlin.math.abs(options[it] - session.danmaku.opacity) } ?: 0
-        SingleChoiceDialog.show(
-            context = this,
-            title = "弹幕透明度",
-            items = items,
-            checkedIndex = current,
-            negativeText = "取消",
-        ) { which, _ ->
-            val v = options.getOrNull(which) ?: session.danmaku.opacity
-            session = session.copy(danmaku = session.danmaku.copy(opacity = v))
-            binding.danmakuView.invalidate()
-            refreshSettings(binding.recyclerSettings.adapter as PlayerSettingsAdapter)
-        }
-    }
-
-    private fun showDanmakuTextSizeDialog() {
-        val options = (10..60 step 2).toList()
-        val items = options.map { it.toString() }.toTypedArray()
-        val current =
-            options.indices.minByOrNull { kotlin.math.abs(options[it].toFloat() - session.danmaku.textSizeSp) }
-                ?: options.indexOf(18).takeIf { it >= 0 }
-                ?: 0
-        SingleChoiceDialog.show(
-            context = this,
-            title = "弹幕字号(sp)",
-            items = items.toList(),
-            checkedIndex = current,
-            negativeText = "取消",
-        ) { which, _ ->
-            val v = (options.getOrNull(which) ?: session.danmaku.textSizeSp.toInt()).toFloat()
-            session = session.copy(danmaku = session.danmaku.copy(textSizeSp = v))
-            binding.danmakuView.invalidate()
-            refreshSettings(binding.recyclerSettings.adapter as PlayerSettingsAdapter)
-        }
-    }
-
-    private fun showDanmakuSpeedDialog() {
-        val options = (1..10).toList()
-        val items = options.map { it.toString() }
-        val current = options.indexOf(session.danmaku.speedLevel).let { if (it >= 0) it else 3 }
-        SingleChoiceDialog.show(
-            context = this,
-            title = "弹幕速度(1~10)",
-            items = items,
-            checkedIndex = current,
-            negativeText = "取消",
-        ) { which, _ ->
-            val v = options.getOrNull(which) ?: session.danmaku.speedLevel
-            session = session.copy(danmaku = session.danmaku.copy(speedLevel = v))
-            binding.danmakuView.invalidate()
-            refreshSettings(binding.recyclerSettings.adapter as PlayerSettingsAdapter)
-        }
-    }
-
-    private fun showDanmakuAreaDialog() {
-        val options = listOf(
-            (1f / 5f) to "1/5",
-            0.25f to "1/4",
-            (1f / 3f) to "1/3",
-            (2f / 5f) to "2/5",
-            0.50f to "1/2",
-            (3f / 5f) to "3/5",
-            (2f / 3f) to "2/3",
-            0.75f to "3/4",
-            (4f / 5f) to "4/5",
-            1.00f to "不限",
-        )
-        val items = options.map { it.second }
-        val current =
-            options.indices.minByOrNull { kotlin.math.abs(options[it].first - session.danmaku.area) }
-                ?: options.lastIndex
-        SingleChoiceDialog.show(
-            context = this,
-            title = "弹幕区域",
-            items = items,
-            checkedIndex = current,
-            negativeText = "取消",
-        ) { which, _ ->
-            val v = options.getOrNull(which)?.first ?: session.danmaku.area
-            session = session.copy(danmaku = session.danmaku.copy(area = v))
-            binding.danmakuView.invalidate()
-            refreshSettings(binding.recyclerSettings.adapter as PlayerSettingsAdapter)
         }
     }
 
@@ -3971,95 +3655,11 @@ class PlayerActivity : BaseActivity() {
         }
     }
 
-    private fun pickSubtitleItem(items: List<SubtitleItem>): SubtitleItem? {
-        if (items.isEmpty()) return null
-        val prefs = BiliClient.prefs
-        val preferred = session.subtitleLangOverride ?: prefs.subtitlePreferredLang
-        if (preferred == "auto" || preferred.isBlank()) return items.first()
-        return items.firstOrNull { it.lan.equals(preferred, ignoreCase = true) } ?: items.first()
-    }
-
-    private fun subtitleLangSubtitle(): String {
-        if (subtitleItems.isEmpty()) return "无/未加载"
-        val prefs = BiliClient.prefs
-        val preferred = session.subtitleLangOverride ?: prefs.subtitlePreferredLang
-        if (session.subtitleLangOverride == null) {
-            val resolved = resolveSubtitleLang(preferred)
-            return "全局：$resolved"
-        }
-        return resolveSubtitleLang(preferred)
-    }
-
-    private fun resolveSubtitleLang(code: String): String {
-        if (subtitleItems.isEmpty()) return "无"
-        if (code == "auto" || code.isBlank()) {
-            val first = subtitleItems.first()
-            return "自动：${first.lanDoc}"
-        }
-        val found = subtitleItems.firstOrNull { it.lan.equals(code, ignoreCase = true) } ?: subtitleItems.first()
-        return "${found.lanDoc}"
-    }
-
-    private fun showSubtitleLangDialog() {
-        val exo = player ?: return
-        if (subtitleItems.isEmpty()) {
-            Toast.makeText(this, "该视频暂无字幕", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val prefs = BiliClient.prefs
-        val global = prefs.subtitlePreferredLang
-        val items = buildList {
-            add("跟随全局（${resolveSubtitleLang(global)}）")
-            add("自动（取第一个）")
-            subtitleItems.forEach { add(it.lanDoc) }
-        }
-        val currentLabel =
-            when (val ov = session.subtitleLangOverride) {
-                null -> "跟随全局（${resolveSubtitleLang(global)}）"
-                "auto" -> "自动（取第一个）"
-                else -> subtitleItems.firstOrNull { it.lan.equals(ov, ignoreCase = true) }?.lanDoc ?: subtitleItems.first().lanDoc
-            }
-        val checked = items.indexOf(currentLabel).coerceAtLeast(0)
-        SingleChoiceDialog.show(
-            context = this,
-            title = "字幕语言（本次播放）",
-            items = items,
-            checkedIndex = checked,
-            negativeText = "取消",
-        ) { which, _ ->
-            val chosen = items.getOrNull(which).orEmpty()
-            session =
-                when {
-                    chosen.startsWith("跟随全局") -> session.copy(subtitleLangOverride = null)
-                    chosen.startsWith("自动") -> session.copy(subtitleLangOverride = "auto")
-                    else -> {
-                        val code = subtitleItems.firstOrNull { it.lanDoc == chosen }?.lan ?: subtitleItems.first().lan
-                        session.copy(subtitleLangOverride = code)
-                    }
-                }
-            lifecycleScope.launch {
-                subtitleConfig = buildSubtitleConfigFromCurrentSelection(bvid = currentBvid, cid = currentCid)
-                subtitleAvailabilityKnown = true
-                subtitleAvailable = subtitleConfig != null
-                applySubtitleEnabled(exo)
-                refreshSettings(binding.recyclerSettings.adapter as PlayerSettingsAdapter)
-                updateSubtitleButton()
-                reloadStream(keepPosition = true)
-            }
-        }
-    }
-
-    private suspend fun buildSubtitleConfigFromCurrentSelection(bvid: String, cid: Long): MediaItem.SubtitleConfiguration? {
+    internal suspend fun buildSubtitleConfigFromCurrentSelection(bvid: String, cid: Long): MediaItem.SubtitleConfiguration? {
         if (bvid.isBlank() || cid <= 0) return null
         val chosen = pickSubtitleItem(subtitleItems) ?: return null
         return buildSubtitleConfigFromItem(chosen, bvid, cid)
     }
-
-    private data class SubtitleItem(
-        val lan: String,
-        val lanDoc: String,
-        val url: String,
-    )
 
     private data class DanmakuMeta(
         val shield: DanmakuShield,
@@ -4231,24 +3831,7 @@ class PlayerActivity : BaseActivity() {
         binding.danmakuView.trimToTimeRange(minTimeMs = minTimeMs, maxTimeMs = maxTimeMs)
     }
 
-    private fun configureSubtitleView() {
-        val subtitleView = binding.playerView.findViewById<SubtitleView>(androidx.media3.ui.R.id.exo_subtitles) ?: return
-        // Move subtitles slightly up from the very bottom.
-        subtitleView.setBottomPaddingFraction(0.16f)
-        // Make background more transparent while keeping readability.
-        subtitleView.setStyle(
-            CaptionStyleCompat(
-                /* foregroundColor= */ 0xFFFFFFFF.toInt(),
-                /* backgroundColor= */ 0x22000000,
-                /* windowColor= */ 0x00000000,
-                /* edgeType= */ CaptionStyleCompat.EDGE_TYPE_OUTLINE,
-                /* edgeColor= */ 0xCC000000.toInt(),
-                /* typeface= */ null,
-            ),
-        )
-    }
-
-    private data class PlayerSessionSettings(
+    internal data class PlayerSessionSettings(
         val playbackSpeed: Float,
         val preferCodec: String,
         val preferAudioId: Int,
@@ -4278,77 +3861,6 @@ class PlayerActivity : BaseActivity() {
                 ?: session.targetAudioId.takeIf { it > 0 }
                 ?: session.preferAudioId
         return audioLabel(id)
-    }
-
-    private fun showResolutionDialog() {
-        // Follow docs: qn list for resolution/framerate.
-        // Keep the full list so user can force-pick even if the server later falls back.
-        val docQns = listOf(16, 32, 64, 74, 80, 100, 112, 116, 120, 125, 126, 127, 129)
-        val available = lastAvailableQns.toSet()
-        val options =
-            docQns.map { qn ->
-                val label = qnLabel(qn)
-                if (available.contains(qn)) "${label}（可用）" else label
-            }
-
-        val currentQn =
-            session.actualQn.takeIf { it > 0 }
-                ?: session.targetQn.takeIf { it > 0 }
-                ?: session.preferredQn
-        val currentIndex = docQns.indexOfFirst { it == currentQn }.takeIf { it >= 0 } ?: 0
-        SingleChoiceDialog.show(
-            context = this,
-            title = "分辨率",
-            items = options,
-            checkedIndex = currentIndex,
-            neutralText = "自动",
-            onNeutral = {
-                session = session.copy(targetQn = 0)
-                refreshSettings(binding.recyclerSettings.adapter as PlayerSettingsAdapter)
-                reloadStream(keepPosition = true)
-            },
-            negativeText = "取消",
-        ) { which, _ ->
-            val qn = docQns.getOrNull(which) ?: return@show
-            session = session.copy(targetQn = qn)
-            refreshSettings(binding.recyclerSettings.adapter as PlayerSettingsAdapter)
-            reloadStream(keepPosition = true)
-        }
-    }
-
-    private fun showAudioDialog() {
-        val docIds = listOf(30251, 30250, 30280, 30232, 30216)
-        val available = lastAvailableAudioIds.toSet()
-        val options =
-            docIds.map { id ->
-                val label = audioLabel(id)
-                if (available.contains(id)) "${label}（可用）" else label
-            }
-
-        val currentId =
-            session.actualAudioId.takeIf { it > 0 }
-                ?: session.targetAudioId.takeIf { it > 0 }
-                ?: session.preferAudioId
-        val currentIndex = docIds.indexOfFirst { it == currentId }.takeIf { it >= 0 } ?: 0
-
-        SingleChoiceDialog.show(
-            context = this,
-            title = "音轨",
-            items = options,
-            checkedIndex = currentIndex,
-            neutralText = "默认",
-            onNeutral = {
-                session = session.copy(targetAudioId = 0)
-                refreshSettings(binding.recyclerSettings.adapter as PlayerSettingsAdapter)
-                reloadStream(keepPosition = true)
-            },
-            negativeText = "取消",
-        ) { which, _ ->
-            val id = docIds.getOrNull(which) ?: return@show
-            session = session.copy(targetAudioId = id)
-            refreshSettings(binding.recyclerSettings.adapter as PlayerSettingsAdapter)
-            reloadStream(keepPosition = true)
-        }
     }
 
     private fun playUrlParamsForSession(): Pair<Int, Int> {
@@ -4454,260 +3966,6 @@ class PlayerActivity : BaseActivity() {
         }
 
         return out.distinct()
-    }
-
-    private fun applyUiMode() {
-        val density = resources.displayMetrics.density
-        val autoScale = PlayerContentAutoScale.factor(binding.playerView, density)
-
-        // Use UiScale for device + user preference; additionally fine-tune by actual 16:9 content size.
-        val uiScale =
-            (UiScale.factor(this, BiliClient.prefs.sidebarSize) * autoScale)
-                .coerceIn(0.80f, 1.45f)
-        val sidebarScale =
-            UiScale.factor(this, BiliClient.prefs.sidebarSize).coerceIn(0.60f, 1.40f)
-
-        fun px(id: Int): Int = resources.getDimensionPixelSize(id)
-        fun pxF(id: Int): Float = resources.getDimension(id)
-        fun scaledPx(id: Int): Int = (px(id) * uiScale).roundToInt().coerceAtLeast(0)
-        fun scaledPxF(id: Int): Float = pxF(id) * uiScale
-        fun scaledSidebarPx(id: Int): Int = (px(id) * sidebarScale).roundToInt().coerceAtLeast(0)
-
-        val topPadH = scaledPx(R.dimen.player_top_bar_padding_h_tv)
-        val topPadV = scaledPx(R.dimen.player_top_bar_padding_v_tv)
-        val topPadTopExtra =
-            scaledPx(
-                R.dimen.player_top_bar_padding_top_extra_tv,
-            )
-        val topPadTop = topPadV + topPadTopExtra
-        val topPadBottom = topPadV
-        if (
-            binding.topBar.paddingLeft != topPadH ||
-            binding.topBar.paddingRight != topPadH ||
-            binding.topBar.paddingTop != topPadTop ||
-            binding.topBar.paddingBottom != topPadBottom
-        ) {
-            binding.topBar.setPadding(topPadH, topPadTop, topPadH, topPadBottom)
-        }
-
-        val topBtnSize = scaledPx(R.dimen.player_top_button_size_tv).coerceAtLeast(1)
-        val topBtnPad = scaledPx(R.dimen.player_top_button_padding_tv)
-        val backBtnSize = scaledSidebarPx(R.dimen.sidebar_settings_size_tv).coerceAtLeast(1)
-        val backBtnPad = scaledSidebarPx(R.dimen.sidebar_settings_padding_tv)
-        setSize(binding.btnBack, backBtnSize, backBtnSize)
-        binding.btnBack.setPadding(backBtnPad, backBtnPad, backBtnPad, backBtnPad)
-        setSize(binding.btnSettings, topBtnSize, topBtnSize)
-        binding.btnSettings.setPadding(topBtnPad, topBtnPad, topBtnPad, topBtnPad)
-
-        binding.tvTitle.setTextSize(
-            TypedValue.COMPLEX_UNIT_PX,
-            scaledPxF(R.dimen.player_title_text_size_tv),
-        )
-        (binding.tvTitle.layoutParams as? MarginLayoutParams)?.let { lp ->
-            val ms = scaledPx(R.dimen.player_title_margin_start_tv)
-            val me = scaledPx(R.dimen.player_title_margin_end_tv)
-            if (lp.marginStart != ms || lp.marginEnd != me) {
-                lp.marginStart = ms
-                lp.marginEnd = me
-                binding.tvTitle.layoutParams = lp
-            }
-        }
-
-        binding.tvOnline.setTextSize(
-            TypedValue.COMPLEX_UNIT_PX,
-            scaledPxF(R.dimen.player_online_text_size_tv),
-        )
-
-        binding.tvClock.setTextSize(
-            TypedValue.COMPLEX_UNIT_PX,
-            scaledPxF(R.dimen.player_clock_text_size_tv),
-        )
-        (binding.tvClock.layoutParams as? MarginLayoutParams)?.let { lp ->
-            val me = scaledPx(R.dimen.player_clock_margin_end_tv)
-            if (lp.topMargin != 0 || lp.marginEnd != me) {
-                lp.topMargin = 0
-                lp.marginEnd = me
-                binding.tvClock.layoutParams = lp
-            }
-        }
-        (binding.titleRow.layoutParams as? MarginLayoutParams)?.let { lp ->
-            val me = scaledPx(R.dimen.player_clock_margin_start_tv)
-            if (lp.marginEnd != me) {
-                lp.marginEnd = me
-                binding.titleRow.layoutParams = lp
-            }
-        }
-
-        run {
-            val ms = scaledPx(R.dimen.player_title_margin_start_tv)
-            val me = scaledPx(R.dimen.player_title_margin_end_tv)
-            val mt = scaledPx(R.dimen.player_title_meta_margin_top_tv)
-            (binding.llTitleMeta.layoutParams as? MarginLayoutParams)?.let { lp ->
-                if (lp.marginStart != ms || lp.marginEnd != me || lp.topMargin != mt) {
-                    lp.marginStart = ms
-                    lp.marginEnd = me
-                    lp.topMargin = mt
-                    binding.llTitleMeta.layoutParams = lp
-                }
-            }
-            val pb = scaledPx(R.dimen.player_title_meta_padding_bottom_tv)
-            if (binding.llTitleMeta.paddingBottom != pb) {
-                binding.llTitleMeta.setPadding(
-                    binding.llTitleMeta.paddingLeft,
-                    binding.llTitleMeta.paddingTop,
-                    binding.llTitleMeta.paddingRight,
-                    pb,
-                )
-            }
-            val metaTextSizePx = scaledPxF(R.dimen.player_online_text_size_tv)
-            binding.tvViewCount.setTextSize(TypedValue.COMPLEX_UNIT_PX, metaTextSizePx)
-            binding.tvPubdate.setTextSize(TypedValue.COMPLEX_UNIT_PX, metaTextSizePx)
-            val metaIconSize =
-                scaledPx(R.dimen.video_card_stat_icon_size_tv)
-                    .coerceAtLeast(1)
-            setSize(binding.ivOnlineIcon, metaIconSize, metaIconSize)
-            setSize(binding.ivViewIcon, metaIconSize, metaIconSize)
-        }
-
-        val bottomPadV = scaledPx(R.dimen.player_bottom_bar_padding_v_tv)
-        if (binding.bottomBar.paddingTop != bottomPadV || binding.bottomBar.paddingBottom != bottomPadV) {
-            binding.bottomBar.setPadding(
-                binding.bottomBar.paddingLeft,
-                bottomPadV,
-                binding.bottomBar.paddingRight,
-                bottomPadV,
-            )
-        }
-        if (binding.seekOsdContainer.paddingTop != bottomPadV || binding.seekOsdContainer.paddingBottom != bottomPadV) {
-            binding.seekOsdContainer.setPadding(
-                binding.seekOsdContainer.paddingLeft,
-                bottomPadV,
-                binding.seekOsdContainer.paddingRight,
-                bottomPadV,
-            )
-        }
-
-        (binding.seekProgress.layoutParams as? MarginLayoutParams)?.let { lp ->
-            val height = scaledPx(R.dimen.player_seekbar_touch_height_tv).coerceAtLeast(1)
-            val mb = scaledPx(R.dimen.player_seekbar_margin_bottom_tv)
-            if (lp.height != height || lp.bottomMargin != mb) {
-                lp.height = height
-                lp.bottomMargin = mb
-                binding.seekProgress.layoutParams = lp
-            }
-        }
-        run {
-            binding.seekProgress.progressDrawable = ContextCompat.getDrawable(this, R.drawable.seekbar_player_progress)
-            val trackHeight =
-                scaledPx(
-                    R.dimen.player_seekbar_track_height,
-                ).coerceAtLeast(1)
-            binding.seekProgress.setTrackHeightPx(trackHeight)
-        }
-
-        (binding.progressPersistentBottom.layoutParams as? MarginLayoutParams)?.let { lp ->
-            val height =
-                scaledPx(
-                    R.dimen.player_persistent_progress_height,
-                ).coerceAtLeast(1)
-            if (lp.height != height) {
-                lp.height = height
-                binding.progressPersistentBottom.layoutParams = lp
-            }
-        }
-        run {
-            binding.progressPersistentBottom.progressDrawable = ContextCompat.getDrawable(this, R.drawable.progress_player_persistent)
-        }
-
-        (binding.progressSeekOsd.layoutParams as? MarginLayoutParams)?.let { lp ->
-            val height = scaledPx(R.dimen.player_seek_osd_progress_height).coerceAtLeast(1)
-            val mh = scaledPx(R.dimen.player_seek_osd_margin_h)
-            val mb = scaledPx(R.dimen.player_seek_osd_time_margin_bottom)
-            if (lp.height != height || lp.marginStart != mh || lp.marginEnd != mh || lp.bottomMargin != mb) {
-                lp.height = height
-                lp.marginStart = mh
-                lp.marginEnd = mh
-                lp.bottomMargin = mb
-                binding.progressSeekOsd.layoutParams = lp
-            }
-        }
-        run {
-            binding.progressSeekOsd.progressDrawable = ContextCompat.getDrawable(this, R.drawable.progress_player_seek_osd)
-        }
-
-        (binding.controlsRow.layoutParams as? MarginLayoutParams)?.let { lp ->
-            val height = scaledPx(R.dimen.player_controls_row_height_tv).coerceAtLeast(1)
-            val ms = scaledPx(R.dimen.player_controls_row_margin_start_tv)
-            val me = scaledPx(R.dimen.player_controls_row_margin_end_tv)
-            if (lp.height != height || lp.marginStart != ms || lp.marginEnd != me) {
-                lp.height = height
-                lp.marginStart = ms
-                lp.marginEnd = me
-                binding.controlsRow.layoutParams = lp
-            }
-        }
-
-        // OSD tier already comes from prefs via theme overlay; only normalize device/resolution and
-        // fine-tune by actual 16:9 content size.
-        PlayerOsdSizing.applyToViews(this, binding, scale = UiScale.deviceFactor(this) * autoScale)
-
-        binding.tvTime.setTextSize(
-            TypedValue.COMPLEX_UNIT_PX,
-            scaledPxF(R.dimen.player_time_text_size_tv),
-        )
-        (binding.tvTime.layoutParams as? MarginLayoutParams)?.let { lp ->
-            val me = scaledPx(R.dimen.player_time_margin_end_tv)
-            if (lp.marginEnd != me) {
-                lp.marginEnd = me
-                binding.tvTime.layoutParams = lp
-            }
-        }
-
-        binding.tvSeekOsdTime.setTextSize(
-            TypedValue.COMPLEX_UNIT_PX,
-            scaledPxF(R.dimen.player_time_text_size_tv),
-        )
-        (binding.tvSeekOsdTime.layoutParams as? MarginLayoutParams)?.let { lp ->
-            val me = scaledPx(R.dimen.player_seek_osd_margin_h)
-            val mb = scaledPx(R.dimen.player_seek_osd_margin_bottom)
-            if (lp.marginEnd != me || lp.bottomMargin != mb) {
-                lp.marginEnd = me
-                lp.bottomMargin = mb
-                binding.tvSeekOsdTime.layoutParams = lp
-            }
-        }
-
-        binding.tvSeekHint.setTextSize(
-            TypedValue.COMPLEX_UNIT_PX,
-            scaledPxF(R.dimen.player_seek_hint_text_size_tv),
-        )
-        val hintPadH = scaledPx(R.dimen.player_seek_hint_padding_h_tv)
-        val hintPadV = scaledPx(R.dimen.player_seek_hint_padding_v_tv)
-        if (
-            binding.tvSeekHint.paddingLeft != hintPadH ||
-            binding.tvSeekHint.paddingRight != hintPadH ||
-            binding.tvSeekHint.paddingTop != hintPadV ||
-            binding.tvSeekHint.paddingBottom != hintPadV
-        ) {
-            binding.tvSeekHint.setPadding(hintPadH, hintPadV, hintPadH, hintPadV)
-        }
-        (binding.tvSeekHint.layoutParams as? MarginLayoutParams)?.let { lp ->
-            val ms = scaledPx(R.dimen.player_seek_hint_margin_start_tv)
-            val mb = scaledPx(R.dimen.player_seek_hint_margin_bottom_tv)
-            if (lp.marginStart != ms || lp.bottomMargin != mb) {
-                lp.marginStart = ms
-                lp.bottomMargin = mb
-                binding.tvSeekHint.layoutParams = lp
-            }
-        }
-    }
-
-    private fun setSize(view: View, widthPx: Int, heightPx: Int) {
-        val lp = view.layoutParams ?: return
-        if (lp.width == widthPx && lp.height == heightPx) return
-        lp.width = widthPx
-        lp.height = heightPx
-        view.layoutParams = lp
     }
 
     companion object {

@@ -1,0 +1,87 @@
+package blbl.cat3399.feature.player
+
+import android.widget.Toast
+import androidx.lifecycle.lifecycleScope
+import blbl.cat3399.core.net.BiliClient
+import blbl.cat3399.core.ui.SingleChoiceDialog
+import kotlinx.coroutines.launch
+
+internal fun PlayerActivity.pickSubtitleItem(items: List<SubtitleItem>): SubtitleItem? {
+    if (items.isEmpty()) return null
+    val prefs = BiliClient.prefs
+    val preferred = session.subtitleLangOverride ?: prefs.subtitlePreferredLang
+    if (preferred == "auto" || preferred.isBlank()) return items.first()
+    return items.firstOrNull { it.lan.equals(preferred, ignoreCase = true) } ?: items.first()
+}
+
+internal fun PlayerActivity.subtitleLangSubtitle(): String {
+    if (subtitleItems.isEmpty()) return "无/未加载"
+    val prefs = BiliClient.prefs
+    val preferred = session.subtitleLangOverride ?: prefs.subtitlePreferredLang
+    if (session.subtitleLangOverride == null) {
+        val resolved = resolveSubtitleLang(preferred)
+        return "全局：$resolved"
+    }
+    return resolveSubtitleLang(preferred)
+}
+
+internal fun PlayerActivity.resolveSubtitleLang(code: String): String {
+    if (subtitleItems.isEmpty()) return "无"
+    if (code == "auto" || code.isBlank()) {
+        val first = subtitleItems.first()
+        return "自动：${first.lanDoc}"
+    }
+    val found = subtitleItems.firstOrNull { it.lan.equals(code, ignoreCase = true) } ?: subtitleItems.first()
+    return "${found.lanDoc}"
+}
+
+internal fun PlayerActivity.showSubtitleLangDialog() {
+    val exo = player ?: return
+    if (subtitleItems.isEmpty()) {
+        Toast.makeText(this, "该视频暂无字幕", Toast.LENGTH_SHORT).show()
+        return
+    }
+    val prefs = BiliClient.prefs
+    val global = prefs.subtitlePreferredLang
+    val items =
+        buildList {
+            add("跟随全局（${resolveSubtitleLang(global)}）")
+            add("自动（取第一个）")
+            subtitleItems.forEach { add(it.lanDoc) }
+        }
+    val currentLabel =
+        when (val ov = session.subtitleLangOverride) {
+            null -> "跟随全局（${resolveSubtitleLang(global)}）"
+            "auto" -> "自动（取第一个）"
+            else -> subtitleItems.firstOrNull { it.lan.equals(ov, ignoreCase = true) }?.lanDoc ?: subtitleItems.first().lanDoc
+        }
+    val checked = items.indexOf(currentLabel).coerceAtLeast(0)
+    SingleChoiceDialog.show(
+        context = this,
+        title = "字幕语言（本次播放）",
+        items = items,
+        checkedIndex = checked,
+        negativeText = "取消",
+    ) { which, _ ->
+        val chosen = items.getOrNull(which).orEmpty()
+        session =
+            when {
+                chosen.startsWith("跟随全局") -> session.copy(subtitleLangOverride = null)
+                chosen.startsWith("自动") -> session.copy(subtitleLangOverride = "auto")
+                else -> {
+                    val code = subtitleItems.firstOrNull { it.lanDoc == chosen }?.lan ?: subtitleItems.first().lan
+                    session.copy(subtitleLangOverride = code)
+                }
+            }
+        lifecycleScope.launch {
+            subtitleConfig = buildSubtitleConfigFromCurrentSelection(bvid = currentBvid, cid = currentCid)
+            subtitleAvailabilityKnown = true
+            subtitleAvailable = subtitleConfig != null
+            applySubtitleEnabled(exo)
+            refreshSettings(binding.recyclerSettings.adapter as PlayerSettingsAdapter)
+            updateSubtitleButton()
+            reloadStream(keepPosition = true)
+        }
+    }
+}
+

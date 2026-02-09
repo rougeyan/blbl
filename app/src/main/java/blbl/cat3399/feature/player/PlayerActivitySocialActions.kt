@@ -435,6 +435,13 @@ internal fun PlayerActivity.playRecommendedNext(userInitiated: Boolean) {
         }
 }
 
+internal fun PlayerActivity.playNextByPlaybackMode(userInitiated: Boolean) {
+    when (resolvedPlaybackMode()) {
+        AppPrefs.PLAYER_PLAYBACK_MODE_RECOMMEND -> playRecommendedNext(userInitiated = userInitiated)
+        else -> playNext(userInitiated = userInitiated)
+    }
+}
+
 internal fun PlayerActivity.playNext(userInitiated: Boolean) {
     val list = playlistItems
     if (list.isEmpty() || playlistIndex !in list.indices) {

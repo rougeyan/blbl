@@ -972,7 +972,7 @@ class PlayerActivity : BaseActivity() {
             }
 
             KeyEvent.KEYCODE_MEDIA_NEXT -> {
-                playNext(userInitiated = true)
+                playNextByPlaybackMode(userInitiated = true)
                 return true
             }
 
@@ -1187,7 +1187,7 @@ class PlayerActivity : BaseActivity() {
             setControlsVisible(true)
         }
         binding.btnNext.setOnClickListener {
-            playNext(userInitiated = true)
+            playNextByPlaybackMode(userInitiated = true)
             setControlsVisible(true)
         }
 

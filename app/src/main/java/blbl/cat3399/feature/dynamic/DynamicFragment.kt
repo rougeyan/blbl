@@ -49,6 +49,7 @@ class DynamicFragment : Fragment(), RefreshKeyHandler {
     private var nextPage: Int = 1
     private var requestToken: Int = 0
     private var dynamicGridController: DpadGridController? = null
+    private var lastUiScaleFactor: Float? = null
 
     private var userMid: Long = 0L
     private var followPage: Int = 1
@@ -125,6 +126,7 @@ class DynamicFragment : Fragment(), RefreshKeyHandler {
                     ),
             ).also { it.install() }
         applyUiMode()
+        lastUiScaleFactor = UiScale.factor(requireContext())
 
         videoAdapter =
             VideoCardAdapter(
@@ -457,10 +459,18 @@ class DynamicFragment : Fragment(), RefreshKeyHandler {
 
     override fun onResume() {
         super.onResume()
-        applyUiMode()
-        if (this::videoAdapter.isInitialized) videoAdapter.invalidateSizing()
-        if (this::followAdapter.isInitialized) followAdapter.invalidateSizing()
-        (_binding?.recyclerDynamic?.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth()
+        val old = lastUiScaleFactor
+        val now = UiScale.factor(requireContext())
+        lastUiScaleFactor = now
+        if (old == null || old != now) {
+            applyUiMode()
+            if (this::videoAdapter.isInitialized) videoAdapter.invalidateSizing()
+            if (this::followAdapter.isInitialized) followAdapter.invalidateSizing()
+        }
+        (_binding?.recyclerDynamic?.layoutManager as? GridLayoutManager)?.let { lm ->
+            val desired = spanCountForWidth()
+            if (lm.spanCount != desired) lm.spanCount = desired
+        }
     }
 
     override fun handleRefreshKey(): Boolean {

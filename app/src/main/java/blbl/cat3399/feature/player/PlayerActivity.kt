@@ -2,7 +2,10 @@ package blbl.cat3399.feature.player
 
 import android.content.Intent
 import android.net.Uri
+import android.app.Activity
+import android.app.Application
 import android.os.Bundle
+import android.os.Looper
 import android.os.SystemClock
 import android.util.TypedValue
 import android.view.GestureDetector
@@ -74,6 +77,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.lang.ref.WeakReference
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -217,11 +221,181 @@ class PlayerActivity : BaseActivity() {
     internal var currentViewDurationMs: Long? = null
     private var exitCleanupRequested: Boolean = false
     private var exitCleanupReason: String? = null
+    private var exitTraceStartAtMs: Long = 0L
+    private var exitTraceStartTrigger: String? = null
+    @Volatile
+    private var exitTracePauseAtMs: Long = 0L
+
+    @Volatile
+    private var exitTraceStopAtMs: Long = 0L
+
+    @Volatile
+    private var exitTraceDestroyAtMs: Long = 0L
+
+    private var exitTraceStallWatchJob: kotlinx.coroutines.Job? = null
+    @Volatile
+    private var exitTraceStallSampled: Boolean = false
+    private var exitTraceNavCallbacks: Application.ActivityLifecycleCallbacks? = null
+    private var exitTraceNavTarget: WeakReference<Activity>? = null
+    @Volatile
+    private var exitTraceNavTargetResumedLogged: Boolean = false
+
+    @Volatile
+    private var exitTraceNavTargetFirstPreDrawLogged: Boolean = false
     private var decoderReleaseRequestedOnStopReason: String? = null
     private var resumeAfterDecoderRelease: Boolean = false
     private var resumeAfterDecoderReleasePositionMs: Long = 0L
     private var resumeExpiredUrlReloadArmed: Boolean = false
     private var resumeExpiredUrlReloadAttempted: Boolean = false
+
+    private fun exitTraceStart(trigger: String) {
+        if (exitTraceStartAtMs != 0L) return
+        val now = SystemClock.elapsedRealtime()
+        exitTraceStartAtMs = now
+        exitTraceStartTrigger = trigger
+        startExitStallWatcherIfNeeded()
+        registerExitNavCallbacksIfNeeded()
+        AppLog.i(
+            "Player",
+            "$EXIT_TRACE_PREFIX dt=+0ms inst=${System.identityHashCode(this)} start=$trigger " +
+                "bvid=${currentBvid.takeLast(8)} aid=${currentAid ?: -1} cid=$currentCid thread=${Thread.currentThread().name}",
+        )
+    }
+
+    private fun exitTraceLog(stage: String, extra: String = "") {
+        val now = SystemClock.elapsedRealtime()
+        val dtText =
+            if (exitTraceStartAtMs > 0L) {
+                "dt=+${now - exitTraceStartAtMs}ms"
+            } else {
+                "dt=?"
+            }
+        val suffix = if (extra.isBlank()) "" else " $extra"
+        AppLog.i(
+            "Player",
+            "$EXIT_TRACE_PREFIX $dtText inst=${System.identityHashCode(this)} " +
+                "bvid=${currentBvid.takeLast(8)} aid=${currentAid ?: -1} cid=$currentCid $stage$suffix",
+        )
+    }
+
+    private fun startExitStallWatcherIfNeeded() {
+        if (exitTraceStallWatchJob != null) return
+        if (exitTraceStartAtMs <= 0L) return
+        exitTraceStallWatchJob =
+            lifecycleScope.launch(Dispatchers.Default) {
+                // Only sample when exit is "unexpectedly" slow. Use a generous threshold so we don't
+                // disturb normal exits.
+                val thresholdMs = 600L
+                delay(thresholdMs)
+                if (exitTraceStartAtMs <= 0L) return@launch
+                if (exitTraceStopAtMs != 0L) return@launch
+                if (exitTraceDestroyAtMs != 0L) return@launch
+                if (exitTraceStallSampled) return@launch
+                exitTraceStallSampled = true
+
+                val now = SystemClock.elapsedRealtime()
+                val dt = (now - exitTraceStartAtMs).coerceAtLeast(0L)
+                val phase =
+                    when {
+                        exitTracePauseAtMs == 0L -> "wait_onPause"
+                        exitTraceStopAtMs == 0L -> "wait_onStop"
+                        else -> "wait_unknown"
+                    }
+                val main = Looper.getMainLooper().thread
+                val state = main.state.toString()
+                val top = captureThreadStackTop(main, maxFrames = 14)
+                exitTraceLog(
+                    "stall:$phase",
+                    "waited=${dt}ms start=${exitTraceStartTrigger.orEmpty()} mainState=$state top=$top",
+                )
+            }
+    }
+
+    private fun captureThreadStackTop(thread: Thread, maxFrames: Int): String {
+        val frames =
+            runCatching { thread.stackTrace.toList() }
+                .getOrDefault(emptyList())
+                .asSequence()
+                // Skip the top internal frames when possible to show real work.
+                .filterNot { f ->
+                    val c = f.className
+                    c.startsWith("java.lang.Thread") ||
+                        c.startsWith("dalvik.system.VMStack") ||
+                        c.startsWith("kotlinx.coroutines")
+                }
+                .take(maxFrames.coerceAtLeast(1))
+                .toList()
+
+        if (frames.isEmpty()) return "(empty)"
+        // Keep the string compact to stay within logcat line limits.
+        return frames.joinToString(" <- ") { f ->
+            val cls = f.className.substringAfterLast('.')
+            "$cls.${f.methodName}:${f.lineNumber}"
+        }
+    }
+
+    private fun registerExitNavCallbacksIfNeeded() {
+        if (exitTraceNavCallbacks != null) return
+        if (exitTraceStartAtMs <= 0L) return
+
+        val cb =
+            object : Application.ActivityLifecycleCallbacks {
+                override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+                override fun onActivityStarted(activity: Activity) = Unit
+                override fun onActivityPaused(activity: Activity) = Unit
+                override fun onActivityStopped(activity: Activity) = Unit
+                override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+                override fun onActivityDestroyed(activity: Activity) = Unit
+
+                override fun onActivityResumed(activity: Activity) {
+                    if (exitTraceStartAtMs <= 0L) return
+                    if (activity === this@PlayerActivity) return
+                    if (exitTraceNavTargetResumedLogged) return
+                    exitTraceNavTargetResumedLogged = true
+                    exitTraceNavTarget = WeakReference(activity)
+
+                    exitTraceLog(
+                        "nav:target:resumed",
+                        "activity=${activity.javaClass.simpleName} targetInst=${System.identityHashCode(activity)}",
+                    )
+
+                    // Log the first visible draw pass of the target activity. This helps separate:
+                    // - time spent before the target can even draw (renderer/GPU), vs
+                    // - time spent inside target layout/measure/draw work.
+                    val decor = activity.window?.decorView ?: return
+                    val observer = decor.viewTreeObserver
+                    observer.addOnPreDrawListener(
+                        object : android.view.ViewTreeObserver.OnPreDrawListener {
+                            override fun onPreDraw(): Boolean {
+                                if (!decor.viewTreeObserver.isAlive) return true
+                                decor.viewTreeObserver.removeOnPreDrawListener(this)
+                                if (exitTraceStartAtMs <= 0L) return true
+                                if (exitTraceNavTargetFirstPreDrawLogged) return true
+                                exitTraceNavTargetFirstPreDrawLogged = true
+                                exitTraceLog(
+                                    "nav:target:first_preDraw",
+                                    "activity=${activity.javaClass.simpleName} targetInst=${System.identityHashCode(activity)}",
+                                )
+                                unregisterExitNavCallbacks(reason = "target_first_preDraw")
+                                return true
+                            }
+                        },
+                    )
+                }
+            }
+
+        exitTraceNavCallbacks = cb
+        runCatching { application.registerActivityLifecycleCallbacks(cb) }
+            .onSuccess { exitTraceLog("nav:callbacks:register") }
+            .onFailure { exitTraceNavCallbacks = null }
+    }
+
+    private fun unregisterExitNavCallbacks(reason: String) {
+        val cb = exitTraceNavCallbacks ?: return
+        exitTraceNavCallbacks = null
+        runCatching { application.unregisterActivityLifecycleCallbacks(cb) }
+        exitTraceLog("nav:callbacks:unregister", "reason=$reason")
+    }
 
     internal class PlaybackTrace(private val id: String) {
         private val startMs = SystemClock.elapsedRealtime()
@@ -269,16 +443,35 @@ class PlayerActivity : BaseActivity() {
     }
 
     private fun requestExitCleanup(reason: String) {
+        if (reason.isNotBlank()) exitTraceStart("cleanup:$reason")
         if (exitCleanupRequested) return
         exitCleanupRequested = true
         exitCleanupReason = reason
         trace?.log("activity:exit:request", "reason=$reason")
+        exitTraceLog(
+            "exitCleanup:request",
+            "reason=$reason thread=${Thread.currentThread().name} bvid=${currentBvid.takeLast(8)} aid=${currentAid ?: -1} cid=$currentCid",
+        )
 
-        if (::binding.isInitialized) {
-            binding.playerView.player = null
-        }
+        val t0 = SystemClock.elapsedRealtime()
+        val tPause = SystemClock.elapsedRealtime()
+        player?.pause()
+        val pauseCostMs = SystemClock.elapsedRealtime() - tPause
+        exitTraceLog("exitCleanup:pause", "cost=${pauseCostMs}ms")
+        exitTraceLog("exitCleanup:detachView", "deferred=1")
+
+        val tStop = SystemClock.elapsedRealtime()
         stopReportProgressLoop(flush = false, reason = reason)
+        val stopCostMs = SystemClock.elapsedRealtime() - tStop
+        exitTraceLog("exitCleanup:stopReportLoop", "cost=${stopCostMs}ms")
+
+        val tEnq = SystemClock.elapsedRealtime()
         enqueueExitProgressReport(reason = reason)
+        val enqCostMs = SystemClock.elapsedRealtime() - tEnq
+        exitTraceLog("exitCleanup:enqueueExitReport", "cost=${enqCostMs}ms")
+
+        val totalCostMs = SystemClock.elapsedRealtime() - t0
+        exitTraceLog("exitCleanup:done", "totalCost=${totalCostMs}ms")
     }
 
     private fun enqueueExitProgressReport(reason: String) {
@@ -286,8 +479,18 @@ class PlayerActivity : BaseActivity() {
         val exo = player ?: return
         val progressSec = (exo.currentPosition.coerceAtLeast(0L) / 1000L)
 
+        val tChecks0 = SystemClock.elapsedRealtime()
         val shouldHistory = shouldReportHistoryNow()
+        val tChecks1 = SystemClock.elapsedRealtime()
         val shouldHeartbeat = shouldReportPgcHeartbeatNow()
+        val tChecks2 = SystemClock.elapsedRealtime()
+        if (exitTraceStartAtMs > 0L) {
+            exitTraceLog(
+                "exitReport:check",
+                "reason=$reason history=${if (shouldHistory) 1 else 0} heartbeat=${if (shouldHeartbeat) 1 else 0} " +
+                    "costHistory=${tChecks1 - tChecks0}ms costHeartbeat=${tChecks2 - tChecks1}ms total=${tChecks2 - tChecks0}ms",
+            )
+        }
         if (!shouldHistory && !shouldHeartbeat) return
 
         val cid = currentCid
@@ -819,6 +1022,9 @@ class PlayerActivity : BaseActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
+        if (exitTraceStartAtMs > 0L) {
+            exitTraceLog("window:focus", "hasFocus=${if (hasFocus) 1 else 0}")
+        }
         if (hasFocus) Immersive.apply(this, BiliClient.prefs.fullscreenEnabled)
     }
 
@@ -854,6 +1060,11 @@ class PlayerActivity : BaseActivity() {
             if (keyCode == KeyEvent.KEYCODE_BACK) {
                 if (finishOnBackKeyUp) {
                     finishOnBackKeyUp = false
+                    exitTraceStart("back:up")
+                    exitTraceLog(
+                        "back:up exit=1",
+                        "osd=$osdMode sidePanel=${if (isSidePanelVisible()) 1 else 0} thread=${Thread.currentThread().name}",
+                    )
                     requestExitCleanup(reason = "back")
                     trace?.log("activity:finish", "via=back")
                     finish()
@@ -916,15 +1127,32 @@ class PlayerActivity : BaseActivity() {
                 if (cancelledAutoSkip) cancelPendingAutoSkip(reason = "back", markIgnored = true)
                 if (cancelledAutoResume || cancelledAutoSkip) {
                     finishOnBackKeyUp = false
+                    exitTraceLog(
+                        "back:down action=cancel_hint",
+                        "resume=${if (cancelledAutoResume) 1 else 0} skip=${if (cancelledAutoSkip) 1 else 0} osd=$osdMode sidePanel=${if (isSidePanelVisible()) 1 else 0}",
+                    )
                     return true
                 }
                 finishOnBackKeyUp = false
-                if (isSidePanelVisible()) return onSidePanelBackPressed()
+                if (isSidePanelVisible()) {
+                    exitTraceLog(
+                        "back:down action=side_panel",
+                        "settings=${if (isSettingsPanelVisible()) 1 else 0} comments=${if (isCommentsPanelVisible()) 1 else 0} thread=${if (isCommentThreadVisible()) 1 else 0}",
+                    )
+                    return onSidePanelBackPressed()
+                }
                 if (osdMode != OsdMode.Hidden) {
+                    exitTraceLog("back:down action=hide_osd", "osd=$osdMode")
                     setControlsVisible(false)
                     return true
                 }
-                finishOnBackKeyUp = doubleBackToExit.shouldExit(enabled = BiliClient.prefs.playerDoubleBackToExit)
+                val enabled = BiliClient.prefs.playerDoubleBackToExit
+                val willExit = doubleBackToExit.shouldExit(enabled = enabled)
+                finishOnBackKeyUp = willExit
+                exitTraceLog(
+                    "back:down action=exit_check",
+                    "doubleBack=${if (enabled) 1 else 0} willExitOnUp=${if (willExit) 1 else 0}",
+                )
                 return true
             }
 
@@ -1041,11 +1269,29 @@ class PlayerActivity : BaseActivity() {
     }
 
     override fun onStop() {
+        exitTraceStopAtMs = SystemClock.elapsedRealtime()
+        if (exitCleanupRequested || isFinishing) {
+            exitTraceStart("onStop")
+            exitTraceLog(
+                "lifecycle:onStop",
+                "isFinishing=${if (isFinishing) 1 else 0} changingConfig=${if (isChangingConfigurations) 1 else 0} cleanupReason=${exitCleanupReason.orEmpty()}",
+            )
+        }
         trace?.log("activity:onStop")
         val releaseReason = decoderReleaseRequestedOnStopReason
         decoderReleaseRequestedOnStopReason = null
         super.onStop()
         player?.pause()
+        if ((exitCleanupRequested || isFinishing) && !isChangingConfigurations) {
+            val tDetach = SystemClock.elapsedRealtime()
+            if (::binding.isInitialized && binding.playerView.player != null) {
+                binding.playerView.player = null
+            }
+            val detachCostMs = SystemClock.elapsedRealtime() - tDetach
+            if (exitTraceStartAtMs > 0L) {
+                exitTraceLog("exitCleanup:detachView:onStop", "cost=${detachCostMs}ms")
+            }
+        }
         if (releaseReason != null && !isChangingConfigurations) {
             releaseDecoderNowForBackground(reason = releaseReason)
         } else {
@@ -1076,17 +1322,51 @@ class PlayerActivity : BaseActivity() {
     }
 
     override fun onPause() {
+        exitTracePauseAtMs = SystemClock.elapsedRealtime()
+        if (exitCleanupRequested || isFinishing || exitTraceStartAtMs > 0L) {
+            exitTraceStart("onPause")
+            exitTraceLog(
+                "lifecycle:onPause",
+                "isFinishing=${if (isFinishing) 1 else 0} changingConfig=${if (isChangingConfigurations) 1 else 0} cleanupReason=${exitCleanupReason.orEmpty()}",
+            )
+        }
         trace?.log("activity:onPause")
         super.onPause()
+        if (exitTraceStartAtMs > 0L) {
+            exitTraceLog("lifecycle:onPause:afterSuper")
+        }
     }
 
     override fun finish() {
+        exitTraceStart("finish()")
+        exitTraceLog(
+            "finish:call",
+            "isFinishing=${if (isFinishing) 1 else 0} cleanupRequested=${if (exitCleanupRequested) 1 else 0} cleanupReason=${exitCleanupReason.orEmpty()}",
+        )
         requestExitCleanup(reason = "finish")
+        if (exitTraceStartAtMs > 0L) {
+            exitTraceLog("finish:beforeSuper", "isFinishing=${if (isFinishing) 1 else 0}")
+        }
         super.finish()
+        if (exitTraceStartAtMs > 0L) {
+            exitTraceLog("finish:afterSuper", "isFinishing=${if (isFinishing) 1 else 0}")
+        }
         applyCloseTransitionNoAnim()
+        if (exitTraceStartAtMs > 0L) {
+            exitTraceLog("finish:afterTransition")
+        }
     }
 
     override fun onDestroy() {
+        val t0 = SystemClock.elapsedRealtime()
+        exitTraceDestroyAtMs = t0
+        if (exitCleanupRequested || isFinishing || exitTraceStartAtMs > 0L) {
+            exitTraceStart("onDestroy")
+            exitTraceLog(
+                "lifecycle:onDestroy:start",
+                "isFinishing=${if (isFinishing) 1 else 0} changingConfig=${if (isChangingConfigurations) 1 else 0} cleanupReason=${exitCleanupReason.orEmpty()} player=${if (player != null) 1 else 0}",
+            )
+        }
         trace?.log("activity:onDestroy:start")
         debugJob?.cancel()
         progressJob?.cancel()
@@ -1108,13 +1388,27 @@ class PlayerActivity : BaseActivity() {
         stopReportProgressLoop(flush = false, reason = "destroy")
         trace?.log("exo:detachView")
         binding.playerView.player = null
+        val preReleaseCostMs = SystemClock.elapsedRealtime() - t0
+        if (exitTraceStartAtMs > 0L) {
+            exitTraceLog("onDestroy:preRelease", "cost=${preReleaseCostMs}ms")
+        }
         trace?.log("exo:release:start")
+        val releaseStart = SystemClock.elapsedRealtime()
         player?.release()
+        val releaseCostMs = SystemClock.elapsedRealtime() - releaseStart
         trace?.log("exo:release:done")
+        if (exitTraceStartAtMs > 0L) {
+            exitTraceLog("exo:release:done", "cost=${releaseCostMs}ms thread=${Thread.currentThread().name}")
+        }
         player = null
         playlistToken?.let(PlayerPlaylistStore::remove)
         ActivityStackLimiter.unregister(group = ACTIVITY_STACK_GROUP, activity = this)
         trace?.log("activity:onDestroy:beforeSuper")
+        val totalCostMs = SystemClock.elapsedRealtime() - t0
+        if (exitTraceStartAtMs > 0L) {
+            exitTraceLog("lifecycle:onDestroy:beforeSuper", "totalCost=${totalCostMs}ms")
+        }
+        unregisterExitNavCallbacks(reason = "destroy")
         super.onDestroy()
     }
 
@@ -2345,6 +2639,7 @@ class PlayerActivity : BaseActivity() {
     }
 
     companion object {
+        private const val EXIT_TRACE_PREFIX = "EXIT_TRACE"
         const val EXTRA_BVID = "bvid"
         const val EXTRA_CID = "cid"
         const val EXTRA_EP_ID = "ep_id"

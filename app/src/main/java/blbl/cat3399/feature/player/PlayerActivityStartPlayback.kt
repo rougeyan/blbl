@@ -354,6 +354,10 @@ internal fun PlayerActivity.startPlayback(
 
 internal fun PlayerActivity.shouldKeepExternalPlaylistFixed(): Boolean {
     if (playlistToken.isNullOrBlank()) return false
+    if (resolvedPlaybackMode() == AppPrefs.PLAYER_PLAYBACK_MODE_CURRENT_LIST) {
+        val list = playlistItems
+        if (list.isNotEmpty() && playlistIndex in list.indices) return true
+    }
     val src = playlistSource?.trim().orEmpty()
     if (src.isBlank()) return false
     return src == "MyToView" || src.startsWith("MyFavFolderDetail:")
@@ -440,6 +444,17 @@ internal fun PlayerActivity.handlePlaybackEnded(exo: ExoPlayer) {
         }
 
         AppPrefs.PLAYER_PLAYBACK_MODE_NEXT -> {
+            val list = playlistItems
+            val idx = playlistIndex
+            val next = idx + 1
+            if (list.isNotEmpty() && idx in list.indices && next in list.indices) {
+                playPlaylistIndex(next)
+            } else {
+                finish()
+            }
+        }
+
+        AppPrefs.PLAYER_PLAYBACK_MODE_CURRENT_LIST -> {
             val list = playlistItems
             val idx = playlistIndex
             val next = idx + 1

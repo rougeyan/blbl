@@ -468,7 +468,7 @@ class SettingsInteractionHandler(
             }
 
             SettingId.PlayerPlaybackMode -> {
-                val options = listOf("循环当前", "播放下一个", "播放推荐视频", "什么都不做", "退出播放器")
+                val options = listOf("循环当前", "播放下一个", "始终播放当前列表", "播放推荐视频", "什么都不做", "退出播放器")
                 showChoiceDialog(
                     title = "播放模式（全局默认）",
                     items = options,
@@ -478,6 +478,7 @@ class SettingsInteractionHandler(
                         when (selected) {
                             "循环当前" -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_LOOP_ONE
                             "播放下一个" -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_NEXT
+                            "始终播放当前列表" -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_CURRENT_LIST
                             "播放推荐视频" -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_RECOMMEND
                             "退出播放器" -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_EXIT
                             else -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_NONE

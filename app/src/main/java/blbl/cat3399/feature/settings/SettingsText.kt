@@ -151,6 +151,7 @@ object SettingsText {
         when (code) {
             blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_LOOP_ONE -> "循环当前"
             blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_NEXT -> "播放下一个"
+            blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_CURRENT_LIST -> "始终播放当前列表"
             blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_RECOMMEND -> "播放推荐视频"
             blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_EXIT -> "退出播放器"
             else -> "什么都不做"
@@ -175,4 +176,3 @@ object SettingsText {
             else -> qn.toString()
         }
 }
-

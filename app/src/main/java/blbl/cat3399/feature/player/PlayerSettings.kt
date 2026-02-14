@@ -260,6 +260,7 @@ internal fun PlayerActivity.playbackModeLabel(code: String): String =
     when (code) {
         AppPrefs.PLAYER_PLAYBACK_MODE_LOOP_ONE -> "循环当前"
         AppPrefs.PLAYER_PLAYBACK_MODE_NEXT -> "播放下一个"
+        AppPrefs.PLAYER_PLAYBACK_MODE_CURRENT_LIST -> "始终播放当前列表"
         AppPrefs.PLAYER_PLAYBACK_MODE_RECOMMEND -> "播放推荐视频"
         AppPrefs.PLAYER_PLAYBACK_MODE_EXIT -> "退出播放器"
         else -> "什么都不做"
@@ -283,6 +284,7 @@ internal fun PlayerActivity.showPlaybackModeDialog() {
         listOf(
             "循环当前",
             "播放下一个",
+            "始终播放当前列表",
             "播放推荐视频",
             "什么都不做",
             "退出播放器",
@@ -307,6 +309,7 @@ internal fun PlayerActivity.showPlaybackModeDialog() {
             when {
                 chosen.startsWith("循环") -> session.copy(playbackModeOverride = AppPrefs.PLAYER_PLAYBACK_MODE_LOOP_ONE)
                 chosen.startsWith("播放下一个") -> session.copy(playbackModeOverride = AppPrefs.PLAYER_PLAYBACK_MODE_NEXT)
+                chosen.startsWith("始终播放当前列表") -> session.copy(playbackModeOverride = AppPrefs.PLAYER_PLAYBACK_MODE_CURRENT_LIST)
                 chosen.startsWith("播放推荐") -> session.copy(playbackModeOverride = AppPrefs.PLAYER_PLAYBACK_MODE_RECOMMEND)
                 chosen.startsWith("退出") -> session.copy(playbackModeOverride = AppPrefs.PLAYER_PLAYBACK_MODE_EXIT)
                 else -> session.copy(playbackModeOverride = AppPrefs.PLAYER_PLAYBACK_MODE_NONE)

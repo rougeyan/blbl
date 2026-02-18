@@ -169,7 +169,7 @@ internal fun PlayerActivity.toggleSettingsPanel() {
 }
 
 internal fun PlayerActivity.showSettingsPanel() {
-    hideRecommendPanel(restoreFocus = false)
+    hideBottomCardPanel(restoreFocus = false)
     val enteringSidePanelMode = !isSidePanelVisible()
     if (enteringSidePanelMode) {
         sidePanelFocusReturn.capture(currentFocus)
@@ -199,7 +199,7 @@ internal fun PlayerActivity.toggleCommentsPanel() {
 }
 
 internal fun PlayerActivity.showCommentsPanel() {
-    hideRecommendPanel(restoreFocus = false)
+    hideBottomCardPanel(restoreFocus = false)
     val enteringSidePanelMode = !isSidePanelVisible()
     if (enteringSidePanelMode) {
         sidePanelFocusReturn.capture(currentFocus)

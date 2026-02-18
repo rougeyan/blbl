@@ -18,12 +18,30 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import blbl.cat3399.core.model.VideoCard
 
-internal fun PlayerActivity.applyActionButtonsVisibility() {
-    val enabled = BiliClient.prefs.playerActionButtons.toSet()
-    binding.btnLike.visibility = if (enabled.contains(AppPrefs.PLAYER_ACTION_BTN_LIKE)) View.VISIBLE else View.GONE
-    binding.btnCoin.visibility = if (enabled.contains(AppPrefs.PLAYER_ACTION_BTN_COIN)) View.VISIBLE else View.GONE
-    binding.btnFav.visibility = if (enabled.contains(AppPrefs.PLAYER_ACTION_BTN_FAV)) View.VISIBLE else View.GONE
+internal fun PlayerActivity.applyOsdButtonsVisibility() {
+    val enabled = BiliClient.prefs.playerOsdButtons.toSet()
+
+    binding.btnPrev.visibility = if (enabled.contains(AppPrefs.PLAYER_OSD_BTN_PREV)) View.VISIBLE else View.GONE
+    binding.btnPlayPause.visibility = View.VISIBLE
+    binding.btnNext.visibility = if (enabled.contains(AppPrefs.PLAYER_OSD_BTN_NEXT)) View.VISIBLE else View.GONE
+    binding.btnSubtitle.visibility = if (enabled.contains(AppPrefs.PLAYER_OSD_BTN_SUBTITLE)) View.VISIBLE else View.GONE
+    binding.btnDanmaku.visibility = if (enabled.contains(AppPrefs.PLAYER_OSD_BTN_DANMAKU)) View.VISIBLE else View.GONE
+    binding.btnComments.visibility = if (enabled.contains(AppPrefs.PLAYER_OSD_BTN_COMMENTS)) View.VISIBLE else View.GONE
+    binding.btnUp.visibility = if (enabled.contains(AppPrefs.PLAYER_OSD_BTN_UP)) View.VISIBLE else View.GONE
+    binding.btnLike.visibility = if (enabled.contains(AppPrefs.PLAYER_OSD_BTN_LIKE)) View.VISIBLE else View.GONE
+    binding.btnCoin.visibility = if (enabled.contains(AppPrefs.PLAYER_OSD_BTN_COIN)) View.VISIBLE else View.GONE
+    binding.btnFav.visibility = if (enabled.contains(AppPrefs.PLAYER_OSD_BTN_FAV)) View.VISIBLE else View.GONE
+    binding.btnListPanel.visibility = if (enabled.contains(AppPrefs.PLAYER_OSD_BTN_LIST_PANEL)) View.VISIBLE else View.GONE
+    binding.btnAdvanced.visibility = if (enabled.contains(AppPrefs.PLAYER_OSD_BTN_ADVANCED)) View.VISIBLE else View.GONE
+
     updateActionButtonsUi()
+    updatePlaylistControls()
+
+    // Focus fallback: avoid leaving focus on a hidden control after returning from Settings.
+    val focused = currentFocus
+    if (focused != null && focused.visibility != View.VISIBLE) {
+        binding.btnPlayPause.post { focusFirstControl() }
+    }
 }
 
 internal fun PlayerActivity.updateActionButtonsUi() {
@@ -60,11 +78,11 @@ internal fun PlayerActivity.refreshActionButtonStatesFromServer(
     bvid: String,
     aid: Long?,
 ) {
-    val enabled = BiliClient.prefs.playerActionButtons.toSet()
+    val enabled = BiliClient.prefs.playerOsdButtons.toSet()
     if (
-        !enabled.contains(AppPrefs.PLAYER_ACTION_BTN_LIKE) &&
-        !enabled.contains(AppPrefs.PLAYER_ACTION_BTN_COIN) &&
-        !enabled.contains(AppPrefs.PLAYER_ACTION_BTN_FAV)
+        !enabled.contains(AppPrefs.PLAYER_OSD_BTN_LIKE) &&
+        !enabled.contains(AppPrefs.PLAYER_OSD_BTN_COIN) &&
+        !enabled.contains(AppPrefs.PLAYER_OSD_BTN_FAV)
     ) {
         return
     }
@@ -298,20 +316,45 @@ internal fun PlayerActivity.applyFavSelection(
 }
 
 internal fun PlayerActivity.updatePlaylistControls() {
-    val hasPlaylist = playlistItems.isNotEmpty() && playlistIndex in playlistItems.indices
-    val canSwitch = playlistItems.size >= 2 && playlistIndex in playlistItems.indices
+    val hasListPanel =
+        partsListItems.isNotEmpty() ||
+            (pageListItems.isNotEmpty() && pageListIndex in pageListItems.indices) ||
+            currentBvid.isNotBlank()
+    val playbackMode = resolvedPlaybackMode()
+    val prevKind =
+        when (playbackMode) {
+            AppPrefs.PLAYER_PLAYBACK_MODE_PARTS_LIST -> PlayerVideoListKind.PARTS
+            else -> PlayerVideoListKind.PAGE
+        }
+    val nextKind =
+        when (playbackMode) {
+            AppPrefs.PLAYER_PLAYBACK_MODE_RECOMMEND -> PlayerVideoListKind.RECOMMEND
+            AppPrefs.PLAYER_PLAYBACK_MODE_PARTS_LIST -> PlayerVideoListKind.PARTS
+            AppPrefs.PLAYER_PLAYBACK_MODE_PAGE_LIST -> PlayerVideoListKind.PAGE
+            else -> PlayerVideoListKind.PAGE
+        }
 
-    run {
-        val alpha = if (canSwitch) 1.0f else 0.35f
-        binding.btnPrev.isEnabled = canSwitch
-        binding.btnNext.isEnabled = canSwitch
-        binding.btnPrev.alpha = alpha
-        binding.btnNext.alpha = alpha
+    fun hasControlContext(kind: PlayerVideoListKind): Boolean {
+        return when (kind) {
+            PlayerVideoListKind.PAGE -> pageListItems.isNotEmpty() && pageListIndex in pageListItems.indices
+            PlayerVideoListKind.PARTS -> partsListItems.isNotEmpty() && partsListIndex in partsListItems.indices
+            PlayerVideoListKind.RECOMMEND -> currentBvid.isNotBlank()
+        }
     }
 
-    binding.btnPlaylist.visibility = if (hasPlaylist) android.view.View.VISIBLE else android.view.View.GONE
-    binding.btnPlaylist.isEnabled = hasPlaylist
-    binding.btnPlaylist.alpha = if (hasPlaylist) 1.0f else 0.35f
+    run {
+        val enabled = hasControlContext(prevKind)
+        binding.btnPrev.isEnabled = enabled
+        binding.btnPrev.alpha = if (enabled) 1.0f else 0.35f
+    }
+    run {
+        val enabled = hasControlContext(nextKind)
+        binding.btnNext.isEnabled = enabled
+        binding.btnNext.alpha = if (enabled) 1.0f else 0.35f
+    }
+
+    binding.btnListPanel.isEnabled = hasListPanel
+    binding.btnListPanel.alpha = if (hasListPanel) 1.0f else 0.35f
 }
 
 internal fun PlayerActivity.updateUpButton() {
@@ -319,65 +362,6 @@ internal fun PlayerActivity.updateUpButton() {
     val alpha = if (enabled) 1.0f else 0.35f
     binding.btnUp.isEnabled = enabled
     binding.btnUp.alpha = alpha
-}
-
-internal fun PlayerActivity.showPlaylistDialog() {
-    val list = playlistItems
-    if (list.isEmpty() || playlistIndex !in list.indices) {
-        AppToast.show(this, "暂无播放列表")
-        return
-    }
-    showPlaylistPanel()
-}
-
-internal fun PlayerActivity.showRecommendDialog() {
-    val requestBvid = currentBvid.trim()
-    if (requestBvid.isBlank()) {
-        AppToast.show(this, "缺少 bvid")
-        return
-    }
-
-    val cached = relatedVideosCache?.takeIf { it.bvid == requestBvid }?.items.orEmpty()
-    if (cached.isNotEmpty()) {
-        showRecommendDialog(items = cached)
-        return
-    }
-
-    if (relatedVideosFetchJob?.isActive == true) {
-        AppToast.show(this, "推荐视频加载中…")
-        return
-    }
-
-    val token = ++relatedVideosFetchToken
-    relatedVideosFetchJob =
-        lifecycleScope.launch {
-            try {
-                val list =
-                    withContext(Dispatchers.IO) {
-                        BiliApi.archiveRelated(bvid = requestBvid, aid = currentAid)
-                    }
-                if (token != relatedVideosFetchToken) return@launch
-                if (currentBvid.trim() != requestBvid) return@launch
-
-                relatedVideosCache = PlayerActivity.RelatedVideosCache(bvid = requestBvid, items = list)
-                if (list.isEmpty()) {
-                    AppToast.show(this@showRecommendDialog, "暂无推荐视频")
-                    return@launch
-                }
-                showRecommendDialog(items = list)
-            } catch (t: Throwable) {
-                if (t is CancellationException) return@launch
-                val e = t as? BiliApiException
-                val msg = e?.apiMessage?.takeIf { it.isNotBlank() } ?: (t.message ?: "加载推荐视频失败")
-                AppToast.show(this@showRecommendDialog, msg)
-            } finally {
-                if (token == relatedVideosFetchToken) relatedVideosFetchJob = null
-            }
-        }
-}
-
-internal fun PlayerActivity.showRecommendDialog(items: List<VideoCard>) {
-    showRecommendPanel(items)
 }
 
 internal fun PlayerActivity.pickRecommendedVideo(items: List<VideoCard>, excludeBvid: String): VideoCard? {
@@ -389,7 +373,8 @@ internal fun PlayerActivity.pickRecommendedVideo(items: List<VideoCard>, exclude
 internal fun PlayerActivity.playRecommendedNext(userInitiated: Boolean) {
     val requestBvid = currentBvid.trim()
     if (requestBvid.isBlank()) {
-        playNext(userInitiated = userInitiated)
+        if (userInitiated) AppToast.show(this, "暂无推荐视频")
+        finish()
         return
     }
 
@@ -402,6 +387,7 @@ internal fun PlayerActivity.playRecommendedNext(userInitiated: Boolean) {
             epIdExtra = null,
             aidExtra = null,
             initialTitle = cachedPicked.title.takeIf { it.isNotBlank() },
+            startedFromList = PlayerVideoListKind.RECOMMEND,
         )
         return
     }
@@ -421,10 +407,11 @@ internal fun PlayerActivity.playRecommendedNext(userInitiated: Boolean) {
                     epIdExtra = null,
                     aidExtra = null,
                     initialTitle = picked.title.takeIf { it.isNotBlank() },
+                    startedFromList = PlayerVideoListKind.RECOMMEND,
                 )
             } else {
                 if (userInitiated) AppToast.show(this@playRecommendedNext, "暂无推荐视频")
-                playNext(userInitiated = userInitiated)
+                finish()
             }
         }
         return
@@ -445,7 +432,7 @@ internal fun PlayerActivity.playRecommendedNext(userInitiated: Boolean) {
                 val picked = pickRecommendedVideo(list, excludeBvid = requestBvid)
                 if (picked == null) {
                     if (userInitiated) AppToast.show(this@playRecommendedNext, "暂无推荐视频")
-                    playNext(userInitiated = userInitiated)
+                    finish()
                     return@launch
                 }
 
@@ -455,6 +442,7 @@ internal fun PlayerActivity.playRecommendedNext(userInitiated: Boolean) {
                     epIdExtra = null,
                     aidExtra = null,
                     initialTitle = picked.title.takeIf { it.isNotBlank() },
+                    startedFromList = PlayerVideoListKind.RECOMMEND,
                 )
             } catch (t: Throwable) {
                 if (t is CancellationException) return@launch
@@ -463,7 +451,7 @@ internal fun PlayerActivity.playRecommendedNext(userInitiated: Boolean) {
                     val msg = e?.apiMessage?.takeIf { it.isNotBlank() } ?: (t.message ?: "加载推荐视频失败")
                     AppToast.show(this@playRecommendedNext, msg)
                 }
-                playNext(userInitiated = userInitiated)
+                if (currentBvid.trim() == requestBvid) finish()
             } finally {
                 if (token == relatedVideosFetchToken) relatedVideosFetchJob = null
             }
@@ -473,45 +461,93 @@ internal fun PlayerActivity.playRecommendedNext(userInitiated: Boolean) {
 internal fun PlayerActivity.playNextByPlaybackMode(userInitiated: Boolean) {
     when (resolvedPlaybackMode()) {
         AppPrefs.PLAYER_PLAYBACK_MODE_RECOMMEND -> playRecommendedNext(userInitiated = userInitiated)
+        AppPrefs.PLAYER_PLAYBACK_MODE_PARTS_LIST -> playPartsNext(userInitiated = userInitiated)
+        AppPrefs.PLAYER_PLAYBACK_MODE_PAGE_LIST -> playNext(userInitiated = userInitiated)
+
+        // Special rule: when mode is exit/none/loop-one, manual Next defaults to Page List.
+        AppPrefs.PLAYER_PLAYBACK_MODE_EXIT,
+        AppPrefs.PLAYER_PLAYBACK_MODE_NONE,
+        AppPrefs.PLAYER_PLAYBACK_MODE_LOOP_ONE,
+        -> playNext(userInitiated = userInitiated)
+
         else -> playNext(userInitiated = userInitiated)
     }
 }
 
+internal fun PlayerActivity.playPrevByPlaybackMode(userInitiated: Boolean) {
+    when (resolvedPlaybackMode()) {
+        AppPrefs.PLAYER_PLAYBACK_MODE_PARTS_LIST -> playPartsPrev(userInitiated = userInitiated)
+        else -> playPrev(userInitiated = userInitiated)
+    }
+}
+
 internal fun PlayerActivity.playNext(userInitiated: Boolean) {
-    val list = playlistItems
-    if (list.isEmpty() || playlistIndex !in list.indices) {
-        if (userInitiated) AppToast.show(this, "暂无下一个视频")
+    val list = pageListItems
+    if (list.isEmpty() || pageListIndex !in list.indices) {
+        if (userInitiated) AppToast.show(this, "无下一个视频，已退出播放器")
+        finish()
         return
     }
-    val next = playlistIndex + 1
+    val next = pageListIndex + 1
     if (next !in list.indices) {
-        if (userInitiated) AppToast.show(this, "已是最后一个视频")
+        if (userInitiated) AppToast.show(this, "无下一个视频，已退出播放器")
+        finish()
         return
     }
-    playPlaylistIndex(next)
+    playPageListIndex(next)
 }
 
 internal fun PlayerActivity.playPrev(userInitiated: Boolean) {
-    val list = playlistItems
-    if (list.isEmpty() || playlistIndex !in list.indices) {
+    val list = pageListItems
+    if (list.isEmpty() || pageListIndex !in list.indices) {
         if (userInitiated) AppToast.show(this, "暂无上一个视频")
         return
     }
-    val prev = playlistIndex - 1
+    val prev = pageListIndex - 1
     if (prev !in list.indices) {
         if (userInitiated) AppToast.show(this, "已是第一个视频")
         return
     }
-    playPlaylistIndex(prev)
+    playPageListIndex(prev)
 }
 
-internal fun PlayerActivity.playPlaylistIndex(index: Int) {
-    val list = playlistItems
+internal fun PlayerActivity.playPartsNext(userInitiated: Boolean) {
+    val list = partsListItems
+    if (list.isEmpty() || partsListIndex !in list.indices) {
+        if (userInitiated) AppToast.show(this, "无下一个视频，已退出播放器")
+        finish()
+        return
+    }
+    val next = partsListIndex + 1
+    if (next !in list.indices) {
+        if (userInitiated) AppToast.show(this, "无下一个视频，已退出播放器")
+        finish()
+        return
+    }
+    playPartsListIndex(next)
+}
+
+internal fun PlayerActivity.playPartsPrev(userInitiated: Boolean) {
+    val list = partsListItems
+    if (list.isEmpty() || partsListIndex !in list.indices) {
+        if (userInitiated) AppToast.show(this, "暂无上一个视频")
+        return
+    }
+    val prev = partsListIndex - 1
+    if (prev !in list.indices) {
+        if (userInitiated) AppToast.show(this, "已是第一个视频")
+        return
+    }
+    playPartsListIndex(prev)
+}
+
+internal fun PlayerActivity.playPageListIndex(index: Int) {
+    val list = pageListItems
     val item = list.getOrNull(index) ?: return
     if (item.bvid.isBlank() && (item.aid ?: 0L) <= 0L) return
 
     // Avoid pointless reload when list has only one item.
-    if (index == playlistIndex) {
+    if (index == pageListIndex) {
         val exo = player ?: return
         exo.seekTo(0)
         exo.playWhenReady = true
@@ -519,8 +555,8 @@ internal fun PlayerActivity.playPlaylistIndex(index: Int) {
         return
     }
 
-    playlistIndex = index.coerceIn(0, list.lastIndex)
-    playlistToken?.let { PlayerPlaylistStore.updateIndex(it, playlistIndex) }
+    pageListIndex = index.coerceIn(0, list.lastIndex)
+    pageListToken?.let { PlayerPlaylistStore.updateIndex(it, pageListIndex) }
     updatePlaylistControls()
     startPlayback(
         bvid = item.bvid,
@@ -528,5 +564,32 @@ internal fun PlayerActivity.playPlaylistIndex(index: Int) {
         epIdExtra = item.epId?.takeIf { it > 0 },
         aidExtra = item.aid?.takeIf { it > 0 },
         initialTitle = item.title,
+        startedFromList = PlayerVideoListKind.PAGE,
+    )
+}
+
+internal fun PlayerActivity.playPartsListIndex(index: Int) {
+    val list = partsListItems
+    val item = list.getOrNull(index) ?: return
+    if (item.bvid.isBlank() && (item.aid ?: 0L) <= 0L) return
+
+    // Avoid pointless reload when list has only one item.
+    if (index == partsListIndex) {
+        val exo = player ?: return
+        exo.seekTo(0)
+        exo.playWhenReady = true
+        exo.play()
+        return
+    }
+
+    partsListIndex = index.coerceIn(0, list.lastIndex)
+    updatePlaylistControls()
+    startPlayback(
+        bvid = item.bvid,
+        cidExtra = item.cid?.takeIf { it > 0 },
+        epIdExtra = item.epId?.takeIf { it > 0 },
+        aidExtra = item.aid?.takeIf { it > 0 },
+        initialTitle = item.title,
+        startedFromList = PlayerVideoListKind.PARTS,
     )
 }

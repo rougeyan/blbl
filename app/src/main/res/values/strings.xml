@@ -78,6 +78,11 @@
     <string name="player_btn_subtitle">字幕</string>
     <string name="player_btn_playlist">播放列表</string>
     <string name="player_btn_recommend">推荐视频</string>
+    <string name="player_btn_list_panel">列表</string>
+    <string name="player_list_tab_page">视频列表</string>
+    <string name="player_list_tab_parts">合集/分P</string>
+    <string name="player_list_tab_recommend">推荐</string>
+    <string name="player_list_empty">暂无内容</string>
     <string name="player_btn_comments">评论</string>
     <string name="player_btn_back">返回</string>
     <string name="player_panel_settings">设置</string>

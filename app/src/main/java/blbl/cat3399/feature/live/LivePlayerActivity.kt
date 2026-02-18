@@ -130,7 +130,7 @@ class LivePlayerActivity : BaseActivity() {
         binding.btnLike.visibility = View.GONE
         binding.btnCoin.visibility = View.GONE
         binding.btnFav.visibility = View.GONE
-        binding.btnRecommend.visibility = View.GONE
+        binding.btnListPanel.visibility = View.GONE
 
         binding.btnBack.setOnClickListener { finish() }
 

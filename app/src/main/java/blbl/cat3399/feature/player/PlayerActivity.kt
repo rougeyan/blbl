@@ -183,21 +183,18 @@ class PlayerActivity : BaseActivity() {
     internal var currentUpName: String? = null
     internal var currentUpAvatar: String? = null
 
-    internal var playlistToken: String? = null
-    internal var playlistSource: String? = null
-    internal var playlistItems: List<PlayerPlaylistItem> = emptyList()
-    internal var playlistUiCards: List<VideoCard> = emptyList()
-    internal var playlistIndex: Int = -1
-    internal var playlistUgcSeasonId: Long? = null
-    internal var playlistUgcSeasonTitle: String? = null
+    internal var pageListToken: String? = null
+    internal var pageListSource: String? = null
+    internal var pageListItems: List<PlayerPlaylistItem> = emptyList()
+    internal var pageListUiCards: List<VideoCard> = emptyList()
+    internal var pageListIndex: Int = -1
+
+    internal var partsListSource: String? = null
+    internal var partsListItems: List<PlayerPlaylistItem> = emptyList()
+    internal var partsListUiCards: List<VideoCard> = emptyList()
+    internal var partsListIndex: Int = -1
     internal lateinit var session: PlayerSessionSettings
-
-    internal enum class BottomCardPanelMode {
-        Recommend,
-        Playlist,
-    }
-
-    internal var bottomCardPanelMode: BottomCardPanelMode = BottomCardPanelMode.Recommend
+    internal var bottomCardPanelKind: PlayerVideoListKind = PlayerVideoListKind.PAGE
     internal var bottomCardPanelRestoreFocus: WeakReference<View>? = null
 
     internal data class RelatedVideosCache(
@@ -592,30 +589,30 @@ class PlayerActivity : BaseActivity() {
         val cidExtra = intent.getLongExtra(EXTRA_CID, -1L).takeIf { it > 0 }
         val epIdExtra = intent.getLongExtra(EXTRA_EP_ID, -1L).takeIf { it > 0 }
         val aidExtra = intent.getLongExtra(EXTRA_AID, -1L).takeIf { it > 0 }
-        playlistToken = intent.getStringExtra(EXTRA_PLAYLIST_TOKEN)?.trim()?.takeIf { it.isNotBlank() }
-        playlistIndex = intent.getIntExtra(EXTRA_PLAYLIST_INDEX, -1)
-        val playlistIndexExtra = playlistIndex
-        playlistToken?.let { token ->
+        pageListToken = intent.getStringExtra(EXTRA_PLAYLIST_TOKEN)?.trim()?.takeIf { it.isNotBlank() }
+        pageListIndex = intent.getIntExtra(EXTRA_PLAYLIST_INDEX, -1)
+        val pageListIndexExtra = pageListIndex
+        pageListToken?.let { token ->
             val p = PlayerPlaylistStore.get(token)
             if (p != null && p.items.isNotEmpty()) {
-                playlistSource = p.source
-                playlistItems = p.items
-                playlistUiCards =
+                pageListSource = p.source
+                pageListItems = p.items
+                pageListUiCards =
                     p.uiCards.takeIf { it.isNotEmpty() && it.size == p.items.size }
                         ?: emptyList()
-                val idx = playlistIndex.takeIf { it in playlistItems.indices } ?: p.index
-                playlistIndex = idx.coerceIn(0, playlistItems.lastIndex)
-                PlayerPlaylistStore.updateIndex(token, playlistIndex)
+                val idx = pageListIndex.takeIf { it in pageListItems.indices } ?: p.index
+                pageListIndex = idx.coerceIn(0, pageListItems.lastIndex)
+                PlayerPlaylistStore.updateIndex(token, pageListIndex)
             } else {
-                playlistUiCards = emptyList()
+                pageListUiCards = emptyList()
             }
         }
         if (epIdExtra != null) {
             AppLog.i(
                 "Player",
                 "CONTINUE_DEBUG intentPgc bvid=${bvid.takeLast(8)} cidExtra=${cidExtra ?: -1L} epIdExtra=$epIdExtra " +
-                    "aidExtra=${aidExtra ?: -1L} token=${playlistToken?.takeLast(6).orEmpty()} " +
-                    "idxExtra=$playlistIndexExtra idxResolved=$playlistIndex src=${playlistSource.orEmpty()}",
+                    "aidExtra=${aidExtra ?: -1L} token=${pageListToken?.takeLast(6).orEmpty()} " +
+                    "idxExtra=$pageListIndexExtra idxResolved=$pageListIndex src=${pageListSource.orEmpty()}",
             )
         }
         trace =
@@ -826,7 +823,7 @@ class PlayerActivity : BaseActivity() {
         initBottomCardPanel()
 
         initControls(exo)
-        applyActionButtonsVisibility()
+        applyOsdButtonsVisibility()
 
         val uncaughtHandler =
             CoroutineExceptionHandler { _, t ->
@@ -840,7 +837,8 @@ class PlayerActivity : BaseActivity() {
             cidExtra = cidExtra,
             epIdExtra = epIdExtra,
             aidExtra = aidExtra,
-            initialTitle = playlistItems.getOrNull(playlistIndex)?.title,
+            initialTitle = pageListItems.getOrNull(pageListIndex)?.title,
+            startedFromList = PlayerVideoListKind.PAGE,
         )
     }
 
@@ -1066,7 +1064,7 @@ class PlayerActivity : BaseActivity() {
         PlayerOsdSizing.applyTheme(this)
         recomputeFixedAutoScaleIfWindowChanged(force = false)
         PlayerUiMode.applyVideo(this, binding, fixedAutoScale = fixedAutoScale)
-        applyActionButtonsVisibility()
+        applyOsdButtonsVisibility()
         updatePersistentBottomProgressBarVisibility()
         (binding.recyclerSettings.adapter as? PlayerSettingsAdapter)?.let { refreshSettings(it) }
     }
@@ -1097,14 +1095,7 @@ class PlayerActivity : BaseActivity() {
                 // Close the recommend panel first; never exit the player while it's visible.
                 if (event.action == KeyEvent.ACTION_DOWN) {
                     finishOnBackKeyUp = false
-                    hideRecommendPanel(restoreFocus = true)
-                }
-                return true
-            }
-
-            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-                if (event.action == KeyEvent.ACTION_DOWN) {
-                    hideRecommendPanel(restoreFocus = true)
+                    hideBottomCardPanel(restoreFocus = true)
                 }
                 return true
             }
@@ -1112,6 +1103,7 @@ class PlayerActivity : BaseActivity() {
             // Let the focused card handle DPAD navigation/selection; prevent PlayerActivity's
             // global DPAD shortcuts from stealing focus and causing outflow.
             when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_UP,
                 KeyEvent.KEYCODE_DPAD_DOWN,
                 KeyEvent.KEYCODE_DPAD_LEFT,
                 KeyEvent.KEYCODE_DPAD_RIGHT,
@@ -1234,11 +1226,7 @@ class PlayerActivity : BaseActivity() {
                 // TV-style shortcut: when OSD is hidden, UP directly opens the playlist (video list)
                 // instead of first bringing up the OSD.
                 if (osdMode == OsdMode.Hidden) {
-                    val hasPlaylist = playlistItems.isNotEmpty() && playlistIndex in playlistItems.indices
-                    if (hasPlaylist) {
-                        showPlaylistDialog()
-                        return true
-                    }
+                    if (showListPanelFromShortcut()) return true
                 }
                 setControlsVisible(true)
                 if (!binding.seekProgress.isFocused) {
@@ -1293,7 +1281,7 @@ class PlayerActivity : BaseActivity() {
             }
 
             KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-                playPrev(userInitiated = true)
+                playPrevByPlaybackMode(userInitiated = true)
                 return true
             }
 
@@ -1492,7 +1480,7 @@ class PlayerActivity : BaseActivity() {
             exitTraceLog("exo:release:done", "cost=${releaseCostMs}ms thread=${Thread.currentThread().name}")
         }
         player = null
-        playlistToken?.let(PlayerPlaylistStore::remove)
+        pageListToken?.let(PlayerPlaylistStore::remove)
         ActivityStackLimiter.unregister(group = ACTIVITY_STACK_GROUP, activity = this)
         trace?.log("activity:onDestroy:beforeSuper")
         val totalCostMs = SystemClock.elapsedRealtime() - t0
@@ -1574,7 +1562,7 @@ class PlayerActivity : BaseActivity() {
             setControlsVisible(true)
         }
         binding.btnPrev.setOnClickListener {
-            playPrev(userInitiated = true)
+            playPrevByPlaybackMode(userInitiated = true)
             setControlsVisible(true)
         }
         binding.btnNext.setOnClickListener {
@@ -1582,13 +1570,8 @@ class PlayerActivity : BaseActivity() {
             setControlsVisible(true)
         }
 
-        binding.btnRecommend.setOnClickListener {
-            showRecommendDialog()
-            setControlsVisible(true)
-        }
-
-        binding.btnPlaylist.setOnClickListener {
-            showPlaylistDialog()
+        binding.btnListPanel.setOnClickListener {
+            showListPanelFromButton()
             setControlsVisible(true)
         }
 
@@ -1727,7 +1710,7 @@ class PlayerActivity : BaseActivity() {
     }
 
     private fun parseSeasonIdFromPlaylistSource(): Long? {
-        val src = playlistSource?.trim().orEmpty()
+        val src = pageListSource?.trim().orEmpty()
         if (!src.startsWith("Bangumi:")) return null
         return src.removePrefix("Bangumi:").trim().toLongOrNull()?.takeIf { it > 0 }
     }

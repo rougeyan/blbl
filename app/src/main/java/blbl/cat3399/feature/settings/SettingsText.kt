@@ -84,21 +84,31 @@ object SettingsText {
             blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_LIKE -> "点赞"
             blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_COIN -> "投币"
             blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_FAV -> "收藏"
-            blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_RECOMMEND -> "推荐视频"
-            blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_PLAYLIST -> "播放列表"
+            blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_LIST_PANEL -> "列表面板"
             blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_ADVANCED -> "更多设置"
             else -> "播放/暂停"
         }
 
-    fun playerActionButtonsText(buttons: List<String>): String {
+    fun playerOsdButtonsText(buttons: List<String>): String {
         val enabled = buttons.toSet()
         val labels =
             buildList {
-                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_ACTION_BTN_LIKE)) add("点赞")
-                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_ACTION_BTN_COIN)) add("投币")
-                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_ACTION_BTN_FAV)) add("收藏")
+                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_PREV)) add("上一个")
+                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_PLAY_PAUSE)) add("播放/暂停")
+                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_NEXT)) add("下一个")
+                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_SUBTITLE)) add("字幕")
+                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_DANMAKU)) add("弹幕")
+                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_COMMENTS)) add("评论")
+                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_UP)) add("UP主")
+                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_LIKE)) add("点赞")
+                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_COIN)) add("投币")
+                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_FAV)) add("收藏")
+                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_LIST_PANEL)) add("列表")
+                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_ADVANCED)) add("更多设置")
             }
-        return if (labels.isEmpty()) "无" else labels.joinToString(separator = " / ")
+        if (labels.isEmpty()) return "无"
+        if (labels.size <= 4) return labels.joinToString(separator = " / ")
+        return labels.take(3).joinToString(separator = " / ") + " 等${labels.size}项"
     }
 
     fun screenText(resources: Resources): String {
@@ -149,9 +159,9 @@ object SettingsText {
 
     fun playbackModeText(code: String): String =
         when (code) {
-            blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_LOOP_ONE -> "循环当前"
-            blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_NEXT -> "播放下一个"
-            blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_CURRENT_LIST -> "始终播放当前列表"
+            blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_LOOP_ONE -> "循环该视频"
+            blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_PAGE_LIST -> "播放视频列表"
+            blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_PARTS_LIST -> "播放合集/分P视频"
             blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_RECOMMEND -> "播放推荐视频"
             blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_EXIT -> "退出播放器"
             else -> "什么都不做"

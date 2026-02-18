@@ -221,7 +221,15 @@ class AppPrefs(context: Context) {
                 prefs.getString(KEY_PLAYER_DOWN_KEY_OSD_FOCUS_TARGET, PLAYER_DOWN_KEY_OSD_FOCUS_PLAY_PAUSE)
                     ?: PLAYER_DOWN_KEY_OSD_FOCUS_PLAY_PAUSE
             val value = raw.trim()
-            return when (value) {
+            val normalized =
+                when (value) {
+                    PLAYER_DOWN_KEY_OSD_FOCUS_RECOMMEND_LEGACY,
+                    PLAYER_DOWN_KEY_OSD_FOCUS_PLAYLIST_LEGACY,
+                    -> PLAYER_DOWN_KEY_OSD_FOCUS_LIST_PANEL
+
+                    else -> value
+                }
+            return when (normalized) {
                 PLAYER_DOWN_KEY_OSD_FOCUS_PREV,
                 PLAYER_DOWN_KEY_OSD_FOCUS_PLAY_PAUSE,
                 PLAYER_DOWN_KEY_OSD_FOCUS_NEXT,
@@ -231,10 +239,9 @@ class AppPrefs(context: Context) {
                 PLAYER_DOWN_KEY_OSD_FOCUS_LIKE,
                 PLAYER_DOWN_KEY_OSD_FOCUS_COIN,
                 PLAYER_DOWN_KEY_OSD_FOCUS_FAV,
-                PLAYER_DOWN_KEY_OSD_FOCUS_RECOMMEND,
-                PLAYER_DOWN_KEY_OSD_FOCUS_PLAYLIST,
+                PLAYER_DOWN_KEY_OSD_FOCUS_LIST_PANEL,
                 PLAYER_DOWN_KEY_OSD_FOCUS_ADVANCED,
-                -> value
+                -> normalized
 
                 else -> PLAYER_DOWN_KEY_OSD_FOCUS_PLAY_PAUSE
             }
@@ -251,8 +258,7 @@ class AppPrefs(context: Context) {
                     PLAYER_DOWN_KEY_OSD_FOCUS_LIKE,
                     PLAYER_DOWN_KEY_OSD_FOCUS_COIN,
                     PLAYER_DOWN_KEY_OSD_FOCUS_FAV,
-                    PLAYER_DOWN_KEY_OSD_FOCUS_RECOMMEND,
-                    PLAYER_DOWN_KEY_OSD_FOCUS_PLAYLIST,
+                    PLAYER_DOWN_KEY_OSD_FOCUS_LIST_PANEL,
                     PLAYER_DOWN_KEY_OSD_FOCUS_ADVANCED,
                     -> value
 
@@ -269,9 +275,13 @@ class AppPrefs(context: Context) {
         get() = prefs.getString(KEY_PLAYER_PLAYBACK_MODE, PLAYER_PLAYBACK_MODE_NONE) ?: PLAYER_PLAYBACK_MODE_NONE
         set(value) = prefs.edit().putString(KEY_PLAYER_PLAYBACK_MODE, value).apply()
 
-    var playerActionButtons: List<String>
-        get() = loadStringList(KEY_PLAYER_ACTION_BUTTONS)
-        set(value) = saveStringList(KEY_PLAYER_ACTION_BUTTONS, value)
+    var playerOsdButtons: List<String>
+        get() {
+            val stored = loadStringList(KEY_PLAYER_OSD_BUTTONS)
+            val normalized = normalizePlayerOsdButtons(stored)
+            return normalized.ifEmpty { DEFAULT_PLAYER_OSD_BUTTONS }
+        }
+        set(value) = saveStringList(KEY_PLAYER_OSD_BUTTONS, normalizePlayerOsdButtons(value))
 
     var gridSpanCount: Int
         get() {
@@ -355,6 +365,21 @@ class AppPrefs(context: Context) {
         prefs.edit().putString(key, arr.toString()).apply()
     }
 
+    private fun normalizePlayerOsdButtons(value: List<String>): List<String> {
+        val out = ArrayList<String>(value.size + 1)
+        val seen = HashSet<String>(value.size + 1)
+        for (raw in value) {
+            val key = raw.trim()
+            if (key.isBlank()) continue
+            if (!PLAYER_OSD_BUTTON_KEYS.contains(key)) continue
+            if (seen.add(key)) out.add(key)
+        }
+        if (!seen.contains(PLAYER_OSD_BTN_PLAY_PAUSE)) {
+            out.add(0, PLAYER_OSD_BTN_PLAY_PAUSE)
+        }
+        return out
+    }
+
     companion object {
         const val UI_MODE_AUTO = "auto"
         const val UI_MODE_TV = "tv"
@@ -417,7 +442,7 @@ class AppPrefs(context: Context) {
         private const val KEY_PLAYER_DOWN_KEY_OSD_FOCUS_TARGET = "player_down_key_osd_focus_target"
         private const val KEY_PLAYER_PERSISTENT_BOTTOM_PROGRESS = "player_persistent_bottom_progress"
         private const val KEY_PLAYER_PLAYBACK_MODE = "player_playback_mode"
-        private const val KEY_PLAYER_ACTION_BUTTONS = "player_action_buttons"
+        private const val KEY_PLAYER_OSD_BUTTONS = "player_osd_buttons"
         private const val KEY_GRID_SPAN = "grid_span"
         private const val KEY_DYNAMIC_GRID_SPAN = "dynamic_grid_span"
         private const val KEY_PGC_GRID_SPAN = "pgc_grid_span"
@@ -433,20 +458,58 @@ class AppPrefs(context: Context) {
         const val PLAYER_CDN_BILIVIDEO = "bilivideo"
         const val PLAYER_CDN_MCDN = "mcdn"
 
-        const val PLAYER_PLAYBACK_MODE_LOOP_ONE = "loop_one"
-        const val PLAYER_PLAYBACK_MODE_NEXT = "next"
-        const val PLAYER_PLAYBACK_MODE_CURRENT_LIST = "current_list"
-        const val PLAYER_PLAYBACK_MODE_RECOMMEND = "recommend"
         const val PLAYER_PLAYBACK_MODE_NONE = "none"
+        const val PLAYER_PLAYBACK_MODE_LOOP_ONE = "loop_one"
         const val PLAYER_PLAYBACK_MODE_EXIT = "exit"
+        const val PLAYER_PLAYBACK_MODE_PAGE_LIST = "page_list"
+        const val PLAYER_PLAYBACK_MODE_PARTS_LIST = "parts_list"
+        const val PLAYER_PLAYBACK_MODE_RECOMMEND = "recommend"
 
         const val PLAYER_HOLD_SEEK_MODE_SPEED = "speed"
         const val PLAYER_HOLD_SEEK_MODE_SCRUB = "scrub"
         const val PLAYER_HOLD_SEEK_SPEED_DEFAULT = 3.0f
 
-        const val PLAYER_ACTION_BTN_LIKE = "like"
-        const val PLAYER_ACTION_BTN_COIN = "coin"
-        const val PLAYER_ACTION_BTN_FAV = "fav"
+        const val PLAYER_OSD_BTN_PREV = "prev"
+        const val PLAYER_OSD_BTN_PLAY_PAUSE = "play_pause"
+        const val PLAYER_OSD_BTN_NEXT = "next"
+        const val PLAYER_OSD_BTN_SUBTITLE = "subtitle"
+        const val PLAYER_OSD_BTN_DANMAKU = "danmaku"
+        const val PLAYER_OSD_BTN_COMMENTS = "comments"
+        const val PLAYER_OSD_BTN_UP = "up"
+        const val PLAYER_OSD_BTN_LIKE = "like"
+        const val PLAYER_OSD_BTN_COIN = "coin"
+        const val PLAYER_OSD_BTN_FAV = "fav"
+        const val PLAYER_OSD_BTN_LIST_PANEL = "list_panel"
+        const val PLAYER_OSD_BTN_ADVANCED = "advanced"
+
+        val DEFAULT_PLAYER_OSD_BUTTONS: List<String> =
+            listOf(
+                PLAYER_OSD_BTN_PREV,
+                PLAYER_OSD_BTN_PLAY_PAUSE,
+                PLAYER_OSD_BTN_NEXT,
+                PLAYER_OSD_BTN_SUBTITLE,
+                PLAYER_OSD_BTN_DANMAKU,
+                PLAYER_OSD_BTN_COMMENTS,
+                PLAYER_OSD_BTN_UP,
+                PLAYER_OSD_BTN_LIST_PANEL,
+                PLAYER_OSD_BTN_ADVANCED,
+            )
+
+        private val PLAYER_OSD_BUTTON_KEYS: Set<String> =
+            setOf(
+                PLAYER_OSD_BTN_PREV,
+                PLAYER_OSD_BTN_PLAY_PAUSE,
+                PLAYER_OSD_BTN_NEXT,
+                PLAYER_OSD_BTN_SUBTITLE,
+                PLAYER_OSD_BTN_DANMAKU,
+                PLAYER_OSD_BTN_COMMENTS,
+                PLAYER_OSD_BTN_UP,
+                PLAYER_OSD_BTN_LIKE,
+                PLAYER_OSD_BTN_COIN,
+                PLAYER_OSD_BTN_FAV,
+                PLAYER_OSD_BTN_LIST_PANEL,
+                PLAYER_OSD_BTN_ADVANCED,
+            )
 
         const val PLAYER_DOWN_KEY_OSD_FOCUS_PREV = "prev"
         const val PLAYER_DOWN_KEY_OSD_FOCUS_PLAY_PAUSE = "play_pause"
@@ -457,9 +520,11 @@ class AppPrefs(context: Context) {
         const val PLAYER_DOWN_KEY_OSD_FOCUS_LIKE = "like"
         const val PLAYER_DOWN_KEY_OSD_FOCUS_COIN = "coin"
         const val PLAYER_DOWN_KEY_OSD_FOCUS_FAV = "fav"
-        const val PLAYER_DOWN_KEY_OSD_FOCUS_RECOMMEND = "recommend"
-        const val PLAYER_DOWN_KEY_OSD_FOCUS_PLAYLIST = "playlist"
+        const val PLAYER_DOWN_KEY_OSD_FOCUS_LIST_PANEL = "list_panel"
         const val PLAYER_DOWN_KEY_OSD_FOCUS_ADVANCED = "advanced"
+
+        private const val PLAYER_DOWN_KEY_OSD_FOCUS_RECOMMEND_LEGACY = "recommend"
+        private const val PLAYER_DOWN_KEY_OSD_FOCUS_PLAYLIST_LEGACY = "playlist"
 
         private fun generateBuvid(): String {
             val bytes = ByteArray(16)

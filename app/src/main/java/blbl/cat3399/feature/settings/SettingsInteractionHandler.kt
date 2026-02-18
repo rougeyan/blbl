@@ -508,7 +508,7 @@ class SettingsInteractionHandler(
             }
 
             SettingId.PlayerPlaybackMode -> {
-                val options = listOf("循环当前", "播放下一个", "始终播放当前列表", "播放推荐视频", "什么都不做", "退出播放器")
+                val options = listOf("播放视频列表", "播放合集/分P视频", "播放推荐视频", "循环该视频", "什么都不做", "退出播放器")
                 showChoiceDialog(
                     title = "播放模式（全局默认）",
                     items = options,
@@ -516,9 +516,9 @@ class SettingsInteractionHandler(
                 ) { selected ->
                     prefs.playerPlaybackMode =
                         when (selected) {
-                            "循环当前" -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_LOOP_ONE
-                            "播放下一个" -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_NEXT
-                            "始终播放当前列表" -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_CURRENT_LIST
+                            "循环该视频" -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_LOOP_ONE
+                            "播放视频列表" -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_PAGE_LIST
+                            "播放合集/分P视频" -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_PARTS_LIST
                             "播放推荐视频" -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_RECOMMEND
                             "退出播放器" -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_EXIT
                             else -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_PLAYBACK_MODE_NONE
@@ -560,7 +560,7 @@ class SettingsInteractionHandler(
                 }
             }
 
-            SettingId.PlayerActionButtons -> showPlayerActionButtonsDialog(sectionIndex = state.currentSectionIndex, focusId = entry.id)
+            SettingId.PlayerOsdButtons -> showPlayerOsdButtonsDialog(sectionIndex = state.currentSectionIndex, focusId = entry.id)
 
             SettingId.PlayerDebugEnabled -> {
                 prefs.playerDebugEnabled = !prefs.playerDebugEnabled
@@ -584,8 +584,7 @@ class SettingsInteractionHandler(
                         blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_LIKE to "点赞",
                         blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_COIN to "投币",
                         blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_FAV to "收藏",
-                        blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_RECOMMEND to "推荐视频",
-                        blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_PLAYLIST to "播放列表",
+                        blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_LIST_PANEL to "列表面板",
                         blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_ADVANCED to "更多设置",
                     )
                 showChoiceDialog(
@@ -653,30 +652,39 @@ class SettingsInteractionHandler(
         }
     }
 
-    private fun showPlayerActionButtonsDialog(sectionIndex: Int, focusId: SettingId) {
+    private fun showPlayerOsdButtonsDialog(sectionIndex: Int, focusId: SettingId) {
         val prefs = BiliClient.prefs
         val options =
             listOf(
-                blbl.cat3399.core.prefs.AppPrefs.PLAYER_ACTION_BTN_LIKE to "点赞",
-                blbl.cat3399.core.prefs.AppPrefs.PLAYER_ACTION_BTN_COIN to "投币",
-                blbl.cat3399.core.prefs.AppPrefs.PLAYER_ACTION_BTN_FAV to "收藏",
+                blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_PREV to "上一个",
+                blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_PLAY_PAUSE to "播放/暂停",
+                blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_NEXT to "下一个",
+                blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_SUBTITLE to "字幕",
+                blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_DANMAKU to "弹幕",
+                blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_COMMENTS to "评论",
+                blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_UP to "UP主",
+                blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_LIKE to "点赞",
+                blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_COIN to "投币",
+                blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_FAV to "收藏",
+                blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_LIST_PANEL to "列表",
+                blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_ADVANCED to "更多设置",
             )
         val keys = options.map { it.first }
         val labels = options.map { it.second }.toTypedArray()
 
-        val selected = prefs.playerActionButtons.toMutableSet()
+        val selected = prefs.playerOsdButtons.toMutableSet()
         val checked = BooleanArray(keys.size) { idx -> selected.contains(keys[idx]) }
 
         val dialog =
             MaterialAlertDialogBuilder(activity)
-                .setTitle("点赞投币收藏是否显示")
+                .setTitle("OSD按钮显示")
                 .setMultiChoiceItems(labels, checked) { _, which, isChecked ->
                     val key = keys[which]
                     if (isChecked) selected.add(key) else selected.remove(key)
                 }
                 .setNegativeButton("取消", null)
                 .setPositiveButton("确定") { _, _ ->
-                    prefs.playerActionButtons = keys.filter { selected.contains(it) }
+                    prefs.playerOsdButtons = keys.filter { selected.contains(it) }
                     renderer.showSection(sectionIndex, focusId = focusId)
                 }
                 .create()

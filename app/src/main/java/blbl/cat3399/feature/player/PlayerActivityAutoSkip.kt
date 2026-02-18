@@ -370,7 +370,7 @@ internal fun PlayerActivity.maybeScheduleAutoResume(
     if (playbackToken != autoResumeToken) return
     val exo = player ?: return
 
-    val strictCidMatch = isMultiPagePlaylist(playlistItems, currentBvid)
+    val strictCidMatch = isMultiPagePlaylist(partsListItems, currentBvid)
     extractResumeCandidateFromPlayJson(playJson)?.let { cand ->
         val data = playJson.optJSONObject("data") ?: playJson.optJSONObject("result") ?: JSONObject()
         val lastCid = data.optLong("last_play_cid", -1L).takeIf { it > 0 }

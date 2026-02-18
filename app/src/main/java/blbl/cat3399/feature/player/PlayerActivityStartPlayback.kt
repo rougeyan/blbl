@@ -59,6 +59,11 @@ internal fun PlayerActivity.resetPlaybackStateForNewMedia(exo: ExoPlayer) {
     actionFavored = false
     updateActionButtonsUi()
 
+    partsListSource = null
+    partsListItems = emptyList()
+    partsListUiCards = emptyList()
+    partsListIndex = -1
+
     relatedVideosFetchJob?.cancel()
     relatedVideosFetchJob = null
     relatedVideosFetchToken++
@@ -84,7 +89,7 @@ internal fun PlayerActivity.resetPlaybackStateForNewMedia(exo: ExoPlayer) {
 
     binding.settingsPanel.visibility = View.GONE
     binding.commentsPanel.visibility = View.GONE
-    hideRecommendPanel(restoreFocus = false)
+    hideBottomCardPanel(restoreFocus = false)
     binding.recyclerComments.visibility = View.VISIBLE
     binding.recyclerCommentThread.visibility = View.GONE
     binding.rowCommentSort.visibility = View.VISIBLE
@@ -110,10 +115,12 @@ internal fun PlayerActivity.startPlayback(
     epIdExtra: Long?,
     aidExtra: Long?,
     initialTitle: String?,
+    startedFromList: PlayerVideoListKind? = null,
 ) {
     val exo = player ?: return
     val safeBvid = bvid?.trim().orEmpty()
     val safeAid = aidExtra?.takeIf { it > 0 }
+    val startFromList = startedFromList
     if (safeBvid.isBlank() && safeAid == null) return
 
     cancelPendingAutoResume(reason = "new_media")
@@ -192,7 +199,7 @@ internal fun PlayerActivity.startPlayback(
                 val bangumiRedirect = parseBangumiRedirectUrl(viewData.optString("redirect_url", ""))
                 val isAlreadyPgc =
                     currentEpId != null ||
-                        playlistSource?.trim().orEmpty().startsWith("Bangumi:")
+                        pageListSource?.trim().orEmpty().startsWith("Bangumi:")
                 if (bangumiRedirect != null && !isAlreadyPgc) {
                     startActivity(
                         Intent(this@startPlayback, BangumiDetailActivity::class.java)
@@ -231,21 +238,11 @@ internal fun PlayerActivity.startPlayback(
                 AppLog.i("Player", "start bvid=$resolvedBvid cid=$cid")
                 trace?.log("cid:resolved", "cid=$cid aid=${aid ?: -1}")
 
-                playlistUgcSeasonId = null
-                playlistUgcSeasonTitle = null
-                val preferMultiPage =
-                    // Only prefer multi-page when the player infers playlist from view() results.
-                    // If an external playlist is provided (token), respect existing override order.
-                    playlistToken.isNullOrBlank()
-                if (preferMultiPage) {
-                    val applied = maybeOverridePlaylistWithMultiPage(viewData, bvid = resolvedBvid)
-                    if (!applied) {
-                        maybeOverridePlaylistWithUgcSeason(viewData, bvid = resolvedBvid)
-                    }
-                } else {
-                    maybeOverridePlaylistWithUgcSeason(viewData, bvid = resolvedBvid)
-                    maybeOverridePlaylistWithMultiPage(viewData, bvid = resolvedBvid)
+                refreshPartsListFromView(viewData, bvid = resolvedBvid)
+                if (startFromList == PlayerVideoListKind.PAGE) {
+                    updatePageListIndexForCurrentMedia(bvid = resolvedBvid, aid = currentAid, cid = cid)
                 }
+                updatePlaylistControls()
 
                 requestOnlineWatchingText(bvid = resolvedBvid, cid = cid)
                 applyPerVideoPreferredQn(viewData, cid = cid)
@@ -368,48 +365,47 @@ internal fun PlayerActivity.startPlayback(
         }
 }
 
-internal fun PlayerActivity.shouldKeepExternalPlaylistFixed(): Boolean {
-    if (playlistToken.isNullOrBlank()) return false
-    if (resolvedPlaybackMode() == AppPrefs.PLAYER_PLAYBACK_MODE_CURRENT_LIST) {
-        val list = playlistItems
-        if (list.isNotEmpty() && playlistIndex in list.indices) return true
-    }
-    val src = playlistSource?.trim().orEmpty()
-    if (src.isBlank()) return false
-    return src == "MyToView" || src.startsWith("MyFavFolderDetail:")
+internal fun PlayerActivity.updatePageListIndexForCurrentMedia(
+    bvid: String,
+    aid: Long?,
+    cid: Long?,
+) {
+    val list = pageListItems
+    if (list.isEmpty()) return
+    val idx = pickPlaylistIndexForCurrentMedia(list, bvid = bvid, aid = aid, cid = cid)
+    if (idx !in list.indices) return
+    if (idx == pageListIndex) return
+    pageListIndex = idx.coerceIn(0, list.lastIndex)
+    pageListToken?.let { PlayerPlaylistStore.updateIndex(it, pageListIndex) }
 }
 
-internal suspend fun PlayerActivity.maybeOverridePlaylistWithUgcSeason(viewData: JSONObject, bvid: String) {
-    if (shouldKeepExternalPlaylistFixed()) return
-    val ugcSeason = viewData.optJSONObject("ugc_season") ?: return
-    val seasonId = ugcSeason.optLong("id").takeIf { it > 0 } ?: return
-    val seasonTitle = ugcSeason.optString("title", "").trim().takeIf { it.isNotBlank() }
+internal suspend fun PlayerActivity.refreshPartsListFromView(viewData: JSONObject, bvid: String) {
+    partsListSource = null
+    partsListItems = emptyList()
+    partsListUiCards = emptyList()
+    partsListIndex = -1
 
-    fun apply(parsed: PlaylistParsed, index: Int) {
-        val items = parsed.items
-        val uiCards =
-            parsed.uiCards
-                .takeIf { it.isNotEmpty() && it.size == items.size }
-                ?: emptyList()
-        if (items.isEmpty() || index !in items.indices) return
-        playlistToken?.let(PlayerPlaylistStore::remove)
-        playlistToken = null
-        playlistSource = null
-        playlistItems = items
-        playlistUiCards = uiCards
-        playlistIndex = index
-        playlistUgcSeasonId = seasonId
-        playlistUgcSeasonTitle = seasonTitle
-        updatePlaylistControls()
-    }
+    val safeBvid = bvid.trim()
+    if (safeBvid.isBlank()) return
 
-    val aid = currentAid
+    val aid = currentAid ?: viewData.optLong("aid").takeIf { it > 0 }
     val cid = currentCid.takeIf { it > 0 }
 
+    val parsedMulti = parseMultiPagePlaylistFromViewWithUiCards(viewData, bvid = safeBvid, aid = aid)
+    if (parsedMulti.items.size > 1) {
+        val idx = pickPlaylistIndexForCurrentMedia(parsedMulti.items, bvid = safeBvid, aid = aid, cid = cid)
+        val safeIndex = idx.takeIf { it in parsedMulti.items.indices } ?: 0
+        applyPartsList(parsed = parsedMulti, index = safeIndex, source = "MultiPage")
+        return
+    }
+
+    val ugcSeason = viewData.optJSONObject("ugc_season") ?: return
+    val seasonId = ugcSeason.optLong("id").takeIf { it > 0 } ?: return
+
     val parsedFromView = parseUgcSeasonPlaylistFromViewWithUiCards(ugcSeason)
-    val idxFromView = pickPlaylistIndexForCurrentMedia(parsedFromView.items, bvid = bvid, aid = aid, cid = cid)
+    val idxFromView = pickPlaylistIndexForCurrentMedia(parsedFromView.items, bvid = safeBvid, aid = aid, cid = cid)
     if (idxFromView >= 0) {
-        apply(parsedFromView, idxFromView)
+        applyPartsList(parsed = parsedFromView, index = idxFromView, source = "UgcSeason")
         return
     }
 
@@ -422,42 +418,25 @@ internal suspend fun PlayerActivity.maybeOverridePlaylistWithUgcSeason(viewData:
         withContext(Dispatchers.IO) {
             runCatching { BiliApi.seasonsArchivesList(mid = mid, seasonId = seasonId, pageSize = 200) }.getOrNull()
         } ?: return
+
     val parsedFromApi = parseUgcSeasonPlaylistFromArchivesListWithUiCards(json)
-    val idxFromApi = pickPlaylistIndexForCurrentMedia(parsedFromApi.items, bvid = bvid, aid = aid, cid = cid)
-    if (idxFromApi >= 0) apply(parsedFromApi, idxFromApi)
+    val idxFromApi = pickPlaylistIndexForCurrentMedia(parsedFromApi.items, bvid = safeBvid, aid = aid, cid = cid)
+    if (idxFromApi >= 0) {
+        applyPartsList(parsed = parsedFromApi, index = idxFromApi, source = "UgcSeason")
+    }
 }
 
-internal fun PlayerActivity.maybeOverridePlaylistWithMultiPage(viewData: JSONObject, bvid: String): Boolean {
-    if (shouldKeepExternalPlaylistFixed()) return false
-    if (playlistUgcSeasonId != null) return false
-    val pages = viewData.optJSONArray("pages") ?: return false
-    if (pages.length() <= 1) return false
-
-    val aid = currentAid ?: viewData.optLong("aid").takeIf { it > 0 }
-    val cid = currentCid.takeIf { it > 0 }
-
-    fun apply(parsed: PlaylistParsed, index: Int): Boolean {
-        val items = parsed.items
-        val uiCards =
-            parsed.uiCards
-                .takeIf { it.isNotEmpty() && it.size == items.size }
-                ?: emptyList()
-        if (items.isEmpty() || index !in items.indices) return false
-        playlistToken?.let(PlayerPlaylistStore::remove)
-        playlistToken = null
-        playlistSource = null
-        playlistItems = items
-        playlistUiCards = uiCards
-        playlistIndex = index
-        updatePlaylistControls()
-        return true
-    }
-
-    val parsedFromView = parseMultiPagePlaylistFromViewWithUiCards(viewData, bvid = bvid, aid = aid)
-    if (parsedFromView.items.size <= 1) return false
-    val idx = pickPlaylistIndexForCurrentMedia(parsedFromView.items, bvid = bvid, aid = aid, cid = cid)
-    val safeIndex = if (idx in parsedFromView.items.indices) idx else 0
-    return apply(parsedFromView, safeIndex)
+private fun PlayerActivity.applyPartsList(parsed: PlaylistParsed, index: Int, source: String) {
+    val items = parsed.items
+    if (items.isEmpty() || index !in items.indices) return
+    val uiCards =
+        parsed.uiCards
+            .takeIf { it.isNotEmpty() && it.size == items.size }
+            ?: emptyList()
+    partsListSource = source
+    partsListItems = items
+    partsListUiCards = uiCards
+    partsListIndex = index
 }
 
 internal fun PlayerActivity.handlePlaybackEnded(exo: ExoPlayer) {
@@ -466,40 +445,22 @@ internal fun PlayerActivity.handlePlaybackEnded(exo: ExoPlayer) {
     lastEndedActionAtMs = now
 
     when (resolvedPlaybackMode()) {
+        AppPrefs.PLAYER_PLAYBACK_MODE_NONE -> Unit
+
         AppPrefs.PLAYER_PLAYBACK_MODE_LOOP_ONE -> {
             exo.seekTo(0)
             exo.playWhenReady = true
             exo.play()
         }
 
-        AppPrefs.PLAYER_PLAYBACK_MODE_NEXT -> {
-            val list = playlistItems
-            val idx = playlistIndex
-            val next = idx + 1
-            if (list.isNotEmpty() && idx in list.indices && next in list.indices) {
-                playPlaylistIndex(next)
-            } else {
-                finish()
-            }
-        }
+        AppPrefs.PLAYER_PLAYBACK_MODE_EXIT -> finish()
 
-        AppPrefs.PLAYER_PLAYBACK_MODE_CURRENT_LIST -> {
-            val list = playlistItems
-            val idx = playlistIndex
-            val next = idx + 1
-            if (list.isNotEmpty() && idx in list.indices && next in list.indices) {
-                playPlaylistIndex(next)
-            } else {
-                finish()
-            }
-        }
+        AppPrefs.PLAYER_PLAYBACK_MODE_PAGE_LIST -> playNext(userInitiated = false)
+
+        AppPrefs.PLAYER_PLAYBACK_MODE_PARTS_LIST -> playPartsNext(userInitiated = false)
 
         AppPrefs.PLAYER_PLAYBACK_MODE_RECOMMEND -> {
             playRecommendedNext(userInitiated = false)
-        }
-
-        AppPrefs.PLAYER_PLAYBACK_MODE_EXIT -> {
-            finish()
         }
 
         else -> Unit

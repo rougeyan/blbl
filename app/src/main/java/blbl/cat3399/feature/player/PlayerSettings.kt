@@ -242,7 +242,7 @@ internal fun PlayerActivity.showSpeedDialog() {
 internal fun PlayerActivity.isPgcLikePlayback(): Boolean {
     val epId = currentEpId
     if (epId != null && epId > 0L) return true
-    val src = playlistSource?.trim().orEmpty()
+    val src = pageListSource?.trim().orEmpty()
     if (src.startsWith("Bangumi:")) return true
     return false
 }
@@ -250,17 +250,33 @@ internal fun PlayerActivity.isPgcLikePlayback(): Boolean {
 internal fun PlayerActivity.resolvedPlaybackMode(): String {
     val prefs = BiliClient.prefs
     val override = session.playbackModeOverride
-    if (override != null) return override
-    // PGC (番剧/影视) 默认始终按“播放下一个”处理，不受全局默认播放模式影响。
-    if (isPgcLikePlayback()) return AppPrefs.PLAYER_PLAYBACK_MODE_NEXT
-    return prefs.playerPlaybackMode
+    val raw =
+        override
+            ?: if (isPgcLikePlayback()) {
+                // PGC (番剧/影视) 默认始终按“播放视频列表”处理，不受全局默认播放模式影响。
+                AppPrefs.PLAYER_PLAYBACK_MODE_PAGE_LIST
+            } else {
+                prefs.playerPlaybackMode
+            }
+
+    return when (raw) {
+        AppPrefs.PLAYER_PLAYBACK_MODE_NONE,
+        AppPrefs.PLAYER_PLAYBACK_MODE_LOOP_ONE,
+        AppPrefs.PLAYER_PLAYBACK_MODE_EXIT,
+        AppPrefs.PLAYER_PLAYBACK_MODE_PAGE_LIST,
+        AppPrefs.PLAYER_PLAYBACK_MODE_PARTS_LIST,
+        AppPrefs.PLAYER_PLAYBACK_MODE_RECOMMEND,
+        -> raw
+
+        else -> AppPrefs.PLAYER_PLAYBACK_MODE_NONE
+    }
 }
 
 internal fun PlayerActivity.playbackModeLabel(code: String): String =
     when (code) {
-        AppPrefs.PLAYER_PLAYBACK_MODE_LOOP_ONE -> "循环当前"
-        AppPrefs.PLAYER_PLAYBACK_MODE_NEXT -> "播放下一个"
-        AppPrefs.PLAYER_PLAYBACK_MODE_CURRENT_LIST -> "始终播放当前列表"
+        AppPrefs.PLAYER_PLAYBACK_MODE_LOOP_ONE -> "循环该视频"
+        AppPrefs.PLAYER_PLAYBACK_MODE_PAGE_LIST -> "播放视频列表"
+        AppPrefs.PLAYER_PLAYBACK_MODE_PARTS_LIST -> "播放合集/分P视频"
         AppPrefs.PLAYER_PLAYBACK_MODE_RECOMMEND -> "播放推荐视频"
         AppPrefs.PLAYER_PLAYBACK_MODE_EXIT -> "退出播放器"
         else -> "什么都不做"
@@ -282,10 +298,10 @@ internal fun PlayerActivity.showPlaybackModeDialog() {
     val exo = player ?: return
     val items =
         listOf(
-            "循环当前",
-            "播放下一个",
-            "始终播放当前列表",
+            "播放视频列表",
+            "播放合集/分P视频",
             "播放推荐视频",
+            "循环该视频",
             "什么都不做",
             "退出播放器",
         )
@@ -301,6 +317,7 @@ internal fun PlayerActivity.showPlaybackModeDialog() {
         onNeutral = {
             session = session.copy(playbackModeOverride = null)
             applyPlaybackMode(exo)
+            updatePlaylistControls()
             refreshSettings(binding.recyclerSettings.adapter as PlayerSettingsAdapter)
         },
     ) { which, _ ->
@@ -308,13 +325,14 @@ internal fun PlayerActivity.showPlaybackModeDialog() {
         session =
             when {
                 chosen.startsWith("循环") -> session.copy(playbackModeOverride = AppPrefs.PLAYER_PLAYBACK_MODE_LOOP_ONE)
-                chosen.startsWith("播放下一个") -> session.copy(playbackModeOverride = AppPrefs.PLAYER_PLAYBACK_MODE_NEXT)
-                chosen.startsWith("始终播放当前列表") -> session.copy(playbackModeOverride = AppPrefs.PLAYER_PLAYBACK_MODE_CURRENT_LIST)
+                chosen.startsWith("播放视频列表") -> session.copy(playbackModeOverride = AppPrefs.PLAYER_PLAYBACK_MODE_PAGE_LIST)
+                chosen.startsWith("播放合集/分P") -> session.copy(playbackModeOverride = AppPrefs.PLAYER_PLAYBACK_MODE_PARTS_LIST)
                 chosen.startsWith("播放推荐") -> session.copy(playbackModeOverride = AppPrefs.PLAYER_PLAYBACK_MODE_RECOMMEND)
                 chosen.startsWith("退出") -> session.copy(playbackModeOverride = AppPrefs.PLAYER_PLAYBACK_MODE_EXIT)
                 else -> session.copy(playbackModeOverride = AppPrefs.PLAYER_PLAYBACK_MODE_NONE)
             }
         applyPlaybackMode(exo)
+        updatePlaylistControls()
         refreshSettings(binding.recyclerSettings.adapter as PlayerSettingsAdapter)
     }
 }
